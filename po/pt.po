@@ -8,9 +8,8 @@ msgstr ""
 "Project-Id-Version: com.mardojai.ForgeSparks\n"
 "Report-Msgid-Bugs-To: \n"
 "POT-Creation-Date: 2025-07-14 19:58-0500\n"
-"PO-Revision-Date: 2024-03-17 17:01+0000\n"
-"Last-Translator: \"André L. Alvares\" "
-"<andrluiz.alvares.alvares84@gmail.com>\n"
+"PO-Revision-Date: 2026-05-26 12:11+0000\n"
+"Last-Translator: ssantos <ssantos@web.de>\n"
 "Language-Team: Portuguese <https://hosted.weblate.org/projects/forge-sparks/"
 "forge-sparks/pt/>\n"
 "Language: pt\n"
@@ -18,7 +17,7 @@ msgstr ""
 "Content-Type: text/plain; charset=UTF-8\n"
 "Content-Transfer-Encoding: 8bit\n"
 "Plural-Forms: nplurals=2; plural=n > 1;\n"
-"X-Generator: Weblate 5.5-dev\n"
+"X-Generator: Weblate 2026.6.dev0\n"
 
 #. TRANSLATORS: Don't translate, only transliterate if needed
 #: data/com.mardojai.ForgeSparks.desktop.in.in:3 src/window.blp:40
@@ -35,10 +34,8 @@ msgid "git;github;notifications;"
 msgstr "git;github;notificações;"
 
 #: data/com.mardojai.ForgeSparks.metainfo.xml.in.in:27
-#, fuzzy
 msgid "Simple notifier app with support for GitLab, Github, Gitea and Forgejo."
-msgstr ""
-"Simples aplicativo notificador com suporte para Github, Gitea e Forgejo."
+msgstr "App notificador simples com apoio para GitLab, Github, Gitea e Forgejo."
 
 #: src/window.blp:7
 msgid "_Preferences"
@@ -182,15 +179,15 @@ msgid "Quit"
 msgstr "Sai"
 
 #: src/forges/github.js:32
-#, fuzzy, javascript-format
+#, javascript-format
 msgid ""
 "You can generate a new personal access token from <a href=\"%s\">GitHub "
 "developer settings</a>. For more information, see \"<a href=\"%s\">Creating "
 "a personal access token</a>\"."
 msgstr ""
-"Você pode gerar um novo token de acesso pessoal indo em <a "
-"href=\"%s\">Opções de desenvolvedor do GitHub</a>. Para mais informação, "
-"veja \"<a href=\"%s\">Criando um token de acesso pessoal</a>\"."
+"Pode gerar um token de acesso pessoal indo em <a href=\"%s\">Opções de "
+"desenvolvedor do GitHub</a>. Para mais informação, veja \"<a href=\"%s\">A "
+"criar um token de acesso pessoal</a>\"."
 
 #. GitHub access token help
 #: src/forges/github.js:37
@@ -212,13 +209,12 @@ msgstr ""
 
 #. Gitea access token help
 #: src/forges/gitea.js:31
-#, fuzzy
 msgid ""
 "To generate a new access token from your instance, go to Settings → "
 "Applications and generate a new token."
 msgstr ""
-"Para gerar um novo token de acesso da sua instância Gitea vá para Settings → "
-"Applications e generate a new token."
+"Para gerar um token de acesso da sua instância, vá para Configurações → "
+"Aplicações e gere um token."
 
 #. Gitea access token help
 #: src/forges/gitea.js:34
@@ -226,28 +222,26 @@ msgid ""
 "Forge Sparks requires the <i>read:issue</i>, <i>write:notification</i> and "
 "<i>read:user</i> scopes granted."
 msgstr ""
-"Forge Sparks requer token de acesso <b>clássico</b> (para uso geral) com os "
-"escopos <i>notifications</i> e <i>read:user</i> concedidos."
+"O Forge Sparks requer que os escopos <i>read:issue</i>, <i>"
+"write:notification</i> e <i>read:user</i> sejam concedidos."
 
 #. GitLab access token help
 #: src/forges/gitlab.js:24
-#, fuzzy
 msgid ""
 "To generate a new access token from your instance, go to Preferences → "
 "Access Tokens and generate a new token."
 msgstr ""
-"Para gerar um novo token de acesso da sua instância Gitea vá para Settings → "
-"Applications e generate a new token."
+"Para gerar um token de acesso da sua instância, vá para Configurações → "
+"Aplicações e gere um token."
 
 #. GitLab access token help
 #: src/forges/gitlab.js:27
-#, fuzzy
 msgid ""
 "Forge Sparks needs <i>read_api</i> scope to read notifications or full "
 "<i>api</i> scope to also mark todos as done."
 msgstr ""
-"Forge Sparks requer token de acesso <b>clássico</b> (para uso geral) com os "
-"escopos <i>notifications</i> e <i>read:user</i> concedidos."
+"O Forge Sparks precisa do escopo <i>read_api</i> para ler notificações ou do "
+"escopo <i>api</i> completo para também marcar tarefas como concluídas."
 
 #: src/model/notification.js:75
 msgid "Mark as Read"
@@ -314,14 +308,12 @@ msgid "Unexpected error removing the account"
 msgstr "Erro inesperado ao remover a conta"
 
 #: src/widgets/preferences.blp:11
-#, fuzzy
 msgid "Keep Running in Background"
-msgstr "Mantém executando em segundo plano"
+msgstr "Continuar a executar em segundo plano"
 
 #: src/widgets/preferences.blp:18
-#, fuzzy
 msgid "Run on Startup"
-msgstr "Executar ao iniciar"
+msgstr "Executar na inicialização"
 
 #: src/widgets/preferences.blp:29
 msgid "Start Hidden"
