@@ -1,8 +1,8 @@
 [Desktop Entry]
 # TRANSLATORS: Don't translate, only transliterate if needed
-Name=Forge Sparks
+Name=Cinders
 Comment=Get Git forges notifications
-Exec=forge-sparks
+Exec=@command@
 Terminal=false
 Type=Application
 Categories=Network;GNOME;GTK;

@@ -14,10 +14,10 @@ imports.package.init({
 setConsoleLogDomain(pkg.name);
 
 const resource = Gio.resource_load(
-    "@datadir@/@app_id@/com.mardojai.ForgeSparks@profile@.src.gresource",
+    "@datadir@/@app_id@/@app_id@.src.gresource",
 );
 Gio.resources_register(resource);
 
-const module = await import("resource://com/mardojai/ForgeSparks@profile@/main.js");
+const module = await import("resource://dev/yulian/Cinders@profile@/main.js");
 const exitCode = await module.main([programInvocationName, ...programArgs]);
 exit(exitCode);

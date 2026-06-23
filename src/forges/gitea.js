@@ -24,6 +24,21 @@ export default class Gitea extends GitHub {
 
     static scopes = ['read:issue', 'write:notification', 'read:user'];
 
+    static authMethods = ['token', 'oauth'];
+
+    static oauthConfig(url) {
+        return {
+            provider: this.name,
+            flow: 'pkce',
+            clientId: 'FORGE_SPARKS_GITEA_CLIENT_ID',
+            scopes: this.scopes,
+            authorizeUrl: `https://${url}/login/oauth/authorize`,
+            tokenUrl: `https://${url}/login/oauth/access_token`,
+            redirectUri: 'http://127.0.0.1/oauth/callback',
+            codeChallengeMethod: 'plain',
+        };
+    }
+
     static get tokenText() {
         /* Gitea access token help */
         let tokenText = _(
@@ -32,7 +47,7 @@ export default class Gitea extends GitHub {
         tokenText += '\n\n';
         /* Gitea access token help */
         tokenText += _(
-            'Forge Sparks requires the <i>read:issue</i>, <i>write:notification</i> and <i>read:user</i> scopes granted.',
+            'Cinders requires the <i>read:issue</i>, <i>write:notification</i> and <i>read:user</i> scopes granted.',
         );
 
         return tokenText;
@@ -43,7 +58,7 @@ export default class Gitea extends GitHub {
          * Gitea differs from GitHub's markAsRead, params are url queries
          */
         try {
-            if (id != null) {
+            if (id !== null) {
                 const url = this.buildURI(`/notifications/threads/${id}`);
                 const message = super.createMessage('PATCH', url);
                 await session.send_and_read_async(
@@ -53,7 +68,7 @@ export default class Gitea extends GitHub {
                 );
 
                 /* If Reset-Content */
-                return message.get_status() == '205';
+                return message.get_status() === 205;
             } else {
                 const now = GLib.DateTime.new_now_utc();
                 const url = this.buildURI('notifications', {
@@ -68,7 +83,7 @@ export default class Gitea extends GitHub {
                 );
 
                 /* If Reset-Content */
-                return message.get_status() == '205';
+                return message.get_status() === 205;
             }
         } catch (e) {
             throw e;

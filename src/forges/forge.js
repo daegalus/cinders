@@ -3,6 +3,8 @@
 import GLib from 'gi://GLib';
 import Soup from 'gi://Soup';
 
+import { repositoryMatchesFilters } from '../model/repositoryFilter.js';
+
 /* Git Forge base class. */
 export default class Forge {
     /**
@@ -33,6 +35,23 @@ export default class Forge {
     static scopes = [];
 
     /**
+     * Supported authentication methods
+     *
+     * @type {Array<String>}
+     */
+    static authMethods = ['token'];
+
+    /**
+     * OAuth configuration for the forge.
+     *
+     * @param {string} _url The account instance URL
+     * @returns {Object|null}
+     */
+    static oauthConfig(_url) {
+        return null;
+    }
+
+    /**
      * Help text on how to get an access token for this forge
      */
     static tokenText;
@@ -45,8 +64,18 @@ export default class Forge {
      * @param {string} account Account ID associated to the instance
      * @param {number} userId Account user ID associated to the instance
      * @param {string} accountName Account name associated to the instance
+     * @param {Array<string>} excludedRepositories Repository filters to exclude
+     * @param {string} authMethod Account authentication method
      */
-    constructor(url, token, account = null, userId = null, accountName = '') {
+    constructor(
+        url,
+        token,
+        account = null,
+        userId = null,
+        accountName = '',
+        excludedRepositories = [],
+        authMethod = 'token',
+    ) {
         /**
          * URL passed when the class was instantiated, the same as
          * this.defaultURL if this.allowInstances is false
@@ -60,12 +89,12 @@ export default class Forge {
         this.token = token;
 
         /**
-         * Account ID on Forge Sparks settings
+         * Account ID on Cinders settings
          */
         this.account = account;
 
         /**
-         * Account user ID on Forge Sparks settings
+         * Account user ID on Cinders settings
          */
         this.userId = userId;
 
@@ -73,6 +102,16 @@ export default class Forge {
          * Account name (username@instance.tld)
          */
         this.accountName = accountName;
+
+        /**
+         * Repository filter patterns excluded for this account
+         */
+        this.excludedRepositories = excludedRepositories;
+
+        /**
+         * Authentication method used by this account
+         */
+        this.authMethod = authMethod;
 
         this.modifiedSince = '';
         this.encoder = new TextEncoder();
@@ -85,6 +124,10 @@ export default class Forge {
      * @type {string}
      */
     get authorization() {
+        if (this.authMethod === 'oauth') {
+            return 'Bearer ' + this.token;
+        }
+
         return 'token ' + this.token;
     }
 
@@ -141,7 +184,7 @@ export default class Forge {
         const message = Soup.Message.new(method, url);
 
         // Add data
-        if (data != null) {
+        if (data !== null) {
             data = JSON.stringify(data);
             const bytes = this.encoder.encode(data);
             message.set_request_body_from_bytes(
@@ -186,6 +229,16 @@ export default class Forge {
      */
     formatID(id) {
         return `${this.account}-${id}`;
+    }
+
+    /**
+     * Check if repository notifications should be ignored for this account
+     *
+     * @param {string} repository Normalized repository name
+     * @returns {boolean}
+     */
+    isRepositoryExcluded(repository) {
+        return repositoryMatchesFilters(repository, this.excludedRepositories);
     }
 
     /**

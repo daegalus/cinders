@@ -15,7 +15,7 @@ import Application from './application.js';
 
 pkg.initGettext();
 
-GLib.set_application_name('Forge Sparks');
+GLib.set_application_name('Cinders');
 
 Gio._promisify(
     Soup.Session.prototype,

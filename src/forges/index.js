@@ -4,6 +4,7 @@ import Forgejo from './forgejo.js';
 import Gitea from './gitea.js';
 import GitHub from './github.js';
 import GitLab from './gitlab.js';
+import Tangled from './tangled.js';
 
 /**
  * Map of Forges implementations
@@ -13,6 +14,7 @@ export const FORGES = {
     gitea: Gitea,
     github: GitHub,
     gitlab: GitLab,
+    tangled: Tangled,
 };
 
 /**

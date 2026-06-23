@@ -1,5 +1,5 @@
-data/com.mardojai.ForgeSparks.desktop.in.in
-data/com.mardojai.ForgeSparks.metainfo.xml.in.in
+data/dev.yulian.Cinders.desktop.in.in
+data/dev.yulian.Cinders.metainfo.xml.in.in
 src/window.blp
 src/util.js
 src/window.js

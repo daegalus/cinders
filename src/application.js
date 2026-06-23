@@ -135,7 +135,7 @@ export default class Application extends Adw.Application {
 
     vfunc_startup() {
         super.vfunc_startup();
-        console.log('Forge Sparks:', pkg.name);
+        console.log('Cinders:', pkg.name);
         console.log('Version:', pkg.version);
     }
 
@@ -177,15 +177,16 @@ export default class Application extends Adw.Application {
 
     _showAbout() {
         const about = new Adw.AboutDialog({
-            developers: ['Rafael Mardojai CM'],
+            developers: ['Yulian Kuncheff', 'Rafael Mardojai CM'],
             /* Translators: Replace "translator-credits" with your names, one name per line */
             translator_credits: _('translator-credits'),
             application_name: GLib.get_application_name(),
             comments: _('Get Git forges notifications'),
             application_icon: pkg.name,
             version: pkg.version,
-            website: '',
-            copyright: 'Copyright 2022 Rafael Mardojai CM',
+            website: 'https://yulian.dev',
+            copyright:
+                'Copyright 2026 Yulian Kuncheff\nCopyright 2022 Rafael Mardojai CM',
             license_type: Gtk.License.MIT_X11,
         });
         about.present(this.window);

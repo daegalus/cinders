@@ -6,6 +6,7 @@ import GObject from 'gi://GObject';
 import Secret from 'gi://Secret';
 
 import { settings } from '../util.js';
+import { parseSecret, serializeSecret } from '../oauth.js';
 
 import Account from './account.js';
 
@@ -51,6 +52,12 @@ export default class AccountsManager extends GObject.Object {
                 'forge',
                 account,
                 'forge',
+                Gio.SettingsBindFlags.DEFAULT,
+            );
+            settings.bind(
+                'auth-method',
+                account,
+                'auth-method',
                 Gio.SettingsBindFlags.DEFAULT,
             );
             settings.bind('url', account, 'url', Gio.SettingsBindFlags.DEFAULT);
@@ -115,7 +122,7 @@ export default class AccountsManager extends GObject.Object {
      */
     getAccountByID(id) {
         for (const account of this._accounts) {
-            if (account.id == id) {
+            if (account.id === id) {
                 return account;
             }
         }
@@ -147,11 +154,12 @@ export default class AccountsManager extends GObject.Object {
      * @param  {string} url Account forge url
      * @param  {number} userId Account user ID
      * @param  {string} username Account username
-     * @param  {string} token Account access token
+     * @param  {string|Object} token Account access token or OAuth token data
+     * @param  {Object} options Additional account settings
      * @throws Throws an error if failed adding the account to secrets
      * @return {Promise<string>} The id of the new account
      */
-    async saveAccount(forge, url, userId, username, token) {
+    async saveAccount(forge, url, userId, username, token, options = {}) {
         /* Account id for further identification */
         const id = GLib.uuid_string_random();
         /* Attributes for the secret */
@@ -159,6 +167,7 @@ export default class AccountsManager extends GObject.Object {
             id: id,
         };
         const label = 'Access token for ' + url;
+        const secret = serializeSecret(token);
 
         try {
             /* Try storing token on secrets service */
@@ -167,7 +176,7 @@ export default class AccountsManager extends GObject.Object {
                 attributes,
                 Secret.COLLECTION_DEFAULT,
                 label,
-                token,
+                secret,
                 null,
             );
 
@@ -180,10 +189,18 @@ export default class AccountsManager extends GObject.Object {
                 /* Get account settings */
                 const accountSettings = this._getAccountSettings(id);
                 /* Save initial values */
+                accountSettings.set_string(
+                    'auth-method',
+                    options.authMethod || 'token',
+                );
                 accountSettings.set_string('forge', forge);
                 accountSettings.set_string('url', url);
                 accountSettings.set_string('username', username);
                 accountSettings.set_int('user-id', userId);
+                accountSettings.set_strv(
+                    'excluded-repositories',
+                    options.excludedRepositories || [],
+                );
 
                 /* Add to list model */
                 const account = new Account({ id: id });
@@ -191,6 +208,12 @@ export default class AccountsManager extends GObject.Object {
                     'forge',
                     account,
                     'forge',
+                    Gio.SettingsBindFlags.DEFAULT,
+                );
+                accountSettings.bind(
+                    'auth-method',
+                    account,
+                    'auth-method',
                     Gio.SettingsBindFlags.DEFAULT,
                 );
                 accountSettings.bind(
@@ -230,13 +253,15 @@ export default class AccountsManager extends GObject.Object {
      * @param  {string} url Account forge url
      * @param  {number} userId Account user ID
      * @param  {string} username Account username
-     * @param  {string} token Account access token
+     * @param  {string|Object} token Account access token or OAuth token data
+     * @param  {Object} options Additional account settings
      * @throws Throws an error if failed updating the account from secrets
      * @return {Promise<boolean>} If the account was successfully updated
      */
-    async updateAccount(id, url, userId, username, token) {
+    async updateAccount(id, url, userId, username, token, options = {}) {
         try {
             const label = 'Access token for ' + url;
+            const secret = serializeSecret(token);
             /* Remove previous secret */
             const successRemove = await Secret.password_clear(
                 SECRETS_SCHEMA,
@@ -250,7 +275,7 @@ export default class AccountsManager extends GObject.Object {
                 { id: id },
                 Secret.COLLECTION_DEFAULT,
                 label,
-                token,
+                secret,
                 null,
             );
 
@@ -260,6 +285,7 @@ export default class AccountsManager extends GObject.Object {
                 accountSettings.set_string('url', url);
                 accountSettings.set_string('username', username);
                 accountSettings.set_int('user-id', userId);
+                this.updateAccountSettings(id, options);
 
                 return true;
             }
@@ -267,6 +293,27 @@ export default class AccountsManager extends GObject.Object {
             return false;
         } catch (error) {
             throw error;
+        }
+    }
+
+    /**
+     * Update account settings that do not require changing the secret
+     *
+     * @param {string} id Account id
+     * @param {Object} options Account settings to update
+     */
+    updateAccountSettings(id, options = {}) {
+        const accountSettings = this._getAccountSettings(id);
+
+        if ('authMethod' in options) {
+            accountSettings.set_string('auth-method', options.authMethod);
+        }
+
+        if ('excludedRepositories' in options) {
+            accountSettings.set_strv(
+                'excluded-repositories',
+                options.excludedRepositories,
+            );
         }
     }
 
@@ -319,6 +366,28 @@ export default class AccountsManager extends GObject.Object {
     }
 
     /**
+     * Gets account auth method
+     *
+     * @param {string} id Account id
+     * @return {string}
+     */
+    getAccountAuthMethod(id) {
+        const accountSettings = this._getAccountSettings(id);
+        return accountSettings.get_string('auth-method');
+    }
+
+    /**
+     * Gets excluded repository filters for an account
+     *
+     * @param {string} id Account id
+     * @return {Array<string>}
+     */
+    getAccountExcludedRepositories(id) {
+        const accountSettings = this._getAccountSettings(id);
+        return accountSettings.get_strv('excluded-repositories');
+    }
+
+    /**
      * Gets the account access token saved in the secrets service
      *
      * @param  {string} id Account id
@@ -327,12 +396,34 @@ export default class AccountsManager extends GObject.Object {
      */
     async getAccountToken(id) {
         try {
-            const token = await Secret.password_lookup(
+            const secret = await Secret.password_lookup(
                 SECRETS_SCHEMA,
                 { id: id },
                 null,
             );
-            return token;
+            return parseSecret(secret).access_token;
+        } catch (error) {
+            throw error;
+        }
+    }
+
+    /**
+     * Gets the parsed account secret payload.
+     *
+     * Legacy accounts return a token-shaped payload.
+     *
+     * @param  {string} id Account id
+     * @throws Throws an error if failed getting the token from secrets
+     * @return {Promise<Object>} The parsed secret payload
+     */
+    async getAccountTokenPayload(id) {
+        try {
+            const secret = await Secret.password_lookup(
+                SECRETS_SCHEMA,
+                { id: id },
+                null,
+            );
+            return parseSecret(secret);
         } catch (error) {
             throw error;
         }

@@ -14,14 +14,14 @@ const Format = imports.format;
  */
 export const settings = new Gio.Settings({
     schema_id: pkg.name,
-    path: '/com/mardojai/ForgeSparks/',
+    path: '/dev/yulian/Cinders/',
 });
 
 /**
  * Soup Session instance for all app requests
  */
 export const session = new Soup.Session();
-session.set_user_agent(`Forge Sparks v${pkg.version}`);
+session.set_user_agent(`Cinders v${pkg.version}`);
 
 /**
  * Desktop Portal instance
@@ -48,14 +48,14 @@ export function requestBackground(window, autostart = false, hidden = false) {
     }
 
     return new Promise((resolve) => {
-        let command = ['forge-sparks'];
+        let command = ['cinders'];
         if (autostart && hidden) command.push('--hidden');
 
         portal.request_background(
             parent,
             autostart
-                ? _('Allow running Forge Sparks on background.')
-                : _('Allow running Forge Sparks on startup.'),
+                ? _('Allow running Cinders on background.')
+                : _('Allow running Cinders on startup.'),
             command,
             autostart
                 ? Xdp.BackgroundFlags.AUTOSTART

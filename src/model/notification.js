@@ -117,7 +117,7 @@ export default class Notification extends GObject.Object {
         const notification = new Gio.Notification();
         const icon = new Gio.ThemedIcon({
             name:
-                this.iconName != DEFAULT_ICON
+                this.iconName !== DEFAULT_ICON
                     ? `${pkg.name}-${this.iconName}`
                     : this.iconName,
         });
@@ -143,7 +143,7 @@ export default class Notification extends GObject.Object {
         const hidden =
             !Gtk.Application.get_default().get_active_window().visible;
         if (hidden) {
-            notification.add_button(_('Show Forge Sparks'), 'app.activate');
+            notification.add_button(_('Show Cinders'), 'app.activate');
         }
 
         return notification;
@@ -252,6 +252,7 @@ export default class Notification extends GObject.Object {
         if (this._updatedAt === value) return;
 
         this._updatedAt = value;
+        this._dateTime = undefined;
         this.notify('updated-at');
     }
 

@@ -4,19 +4,15 @@
   <launchable type="desktop-id">@app_id@.desktop</launchable>
   <translation type="gettext">@app_id@</translation>
 
-  <name translate="no">Forge Sparks</name>
+  <name translate="no">Cinders</name>
   <summary>Get Git forges notifications</summary>
   <metadata_license>CC0-1.0</metadata_license>
   <project_license>MIT</project_license>
-  <url type="homepage">https://github.com/rafaelmardojai/forge-sparks</url>
-  <url type="bugtracker">https://github.com/rafaelmardojai/forge-sparks/issues</url>
-  <url type="donation">https://mardojai.com/donate/</url>
-  <url type="translate">https://hosted.weblate.org/engage/forge-sparks/</url>
-  <url type="vcs-browser">https://github.com/rafaelmardojai/forge-sparks</url>
-  <developer id="com.mardojai">
-      <name translate="no">Rafael Mardojai CM</name>
+  <url type="homepage">https://yulian.dev</url>
+  <developer id="dev.yulian">
+      <name translate="no">Yulian Kuncheff</name>
   </developer>
-  <update_contact>email_AT_rafaelmardojai.com</update_contact>
+  <update_contact>hello_AT_yulian.dev</update_contact>
 
   <branding>
     <color type="primary" scheme_preference="light">#d69b6a</color>
@@ -24,7 +20,7 @@
   </branding>
 
   <description>
-    <p>Simple notifier app with support for GitLab, Github, Gitea and Forgejo.</p>
+    <p>Simple notifier app with support for GitHub, GitLab, Gitea, Forgejo and Tangled.</p>
   </description>
 
   <content_rating type="oars-1.1" />

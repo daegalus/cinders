@@ -1,5 +1,5 @@
 project(
-  'forge-sparks',
+  'cinders',
   version: '1.0.1',
   meson_version: '>= 0.63.0',
   license: 'MIT',
@@ -18,7 +18,7 @@ else
   version_suffix = ''
 endif
 
-application_id = 'com.mardojai.ForgeSparks@0@'.format(profile)
+application_id = 'dev.yulian.Cinders@0@'.format(profile)
 version = meson.project_version() + version_suffix
 
 prefix = get_option('prefix')

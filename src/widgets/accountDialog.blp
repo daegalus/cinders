@@ -53,12 +53,50 @@ template $Gjs_AccountDialog : Adw.Dialog {
             title: _("Instance URL");
             visible: false;
 
-            notify::text => $_onEntryChanged();
             notify::text => $_onInstanceChanged();
+          }
+
+          Adw.ComboRow authMethod {
+            title: _("Authentication");
+            visible: false;
+
+            notify::selected => $_onAuthMethodChanged();
+          }
+
+          Adw.ActionRow oauthStatusRow {
+            title: _("OAuth");
+            visible: false;
+            activatable-widget: oauthLogin;
+
+            Button oauthLogin {
+              label: _("Sign In");
+              valign: center;
+
+              clicked => $_onOAuthLogin();
+
+              styles ["pill"]
+            }
+          }
+
+          Adw.EntryRow oauthCode {
+            title: _("Authorization Code or Redirect URL");
+            visible: false;
+            show-apply-button: false;
+            input-purpose: url;
+
+            notify::text => $_onEntryChanged();
           }
 
           Adw.PasswordEntryRow accessToken {
             title: _("Access Token");
+
+            notify::text => $_onEntryChanged();
+          }
+
+          Adw.EntryRow excludedRepositories {
+            title: _("Excluded Repositories");
+            show-apply-button: false;
+            input-purpose: free_form;
 
             notify::text => $_onEntryChanged();
           }

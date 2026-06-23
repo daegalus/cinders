@@ -87,7 +87,7 @@ export default class NotificationsList extends GObject.Object {
      */
     getByID(id) {
         for (const notification of this._notifications) {
-            if (notification.id == id) {
+            if (notification.id === id) {
                 return notification;
             }
         }
@@ -102,13 +102,13 @@ export default class NotificationsList extends GObject.Object {
     removeByID(id) {
         let removeIndex = -1;
         for (const [i, notification] of this._notifications.entries()) {
-            if (notification.id == id) {
+            if (notification.id === id) {
                 removeIndex = i;
                 break;
             }
         }
 
-        if (removeIndex != -1) {
+        if (removeIndex !== -1) {
             this._notifications.splice(removeIndex, 1);
             this.items_changed(removeIndex, 1, 0);
         }

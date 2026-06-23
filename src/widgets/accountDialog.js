@@ -1,12 +1,22 @@
 import Adw from 'gi://Adw';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
-import Gdk from 'gi://Gdk';
 import Gtk from 'gi://Gtk';
 import { gettext as _ } from 'gettext';
 
 import { FORGES } from '../forges/index.js';
 import AccountsManager from '../model/accountsManager.js';
+import {
+    createPkceRequest,
+    exchangeAuthorizationCode,
+    openOAuthURI,
+    startDeviceOAuth,
+} from '../oauth.js';
+import {
+    joinRepositoryFilters,
+    splitRepositoryFilters,
+    validateRepositoryFilters,
+} from '../model/repositoryFilter.js';
 
 import Template from './accountDialog.blp' with { type: 'uri' };
 
@@ -20,8 +30,13 @@ export default class AccountDialog extends Adw.Dialog {
                 InternalChildren: [
                     'forge',
                     'instance',
+                    'authMethod',
+                    'oauthStatusRow',
+                    'oauthLogin',
+                    'oauthCode',
                     'accessToken',
                     'accessTokenHelp',
+                    'excludedRepositories',
                     'removeAccount',
                     'saveBtn',
                     'toasts',
@@ -52,17 +67,12 @@ export default class AccountDialog extends Adw.Dialog {
         this._account = null;
         this._editing = false;
         this._userChangedInstance = false;
+        this._savedExcludedRepositories = [];
+        this._savedAuthMethod = 'token';
+        this._oauthTokenPayload = null;
+        this._oauthRequest = null;
 
         this.connect('notify::editing', this._onEditing.bind(this));
-
-        /* Setup edited account */
-        if (account != null) {
-            this._account = account;
-            this._editing = true;
-            this.notify('editing');
-
-            this._loadSavedAccount();
-        }
 
         /* Populate forges list (Create account view) */
         const forgesList = new Gtk.StringList();
@@ -70,6 +80,23 @@ export default class AccountDialog extends Adw.Dialog {
             forgesList.append(forge.prettyName);
         }
         this._forge.model = forgesList;
+
+        /* Populate auth method list */
+        const authMethods = new Gtk.StringList();
+        authMethods.append(_('Access Token'));
+        authMethods.append(_('OAuth'));
+        this._authMethod.model = authMethods;
+
+        /* Setup edited account */
+        if (account !== null) {
+            this._account = account;
+            this._editing = true;
+            this.notify('editing');
+
+            this._loadSavedAccount();
+        } else {
+            this._onForgeChanged();
+        }
     }
 
     /**
@@ -89,7 +116,7 @@ export default class AccountDialog extends Adw.Dialog {
             this.title = _('Edit Account');
             this._saveBtn.label = _('Save');
 
-            if (this._account != null)
+            if (this._account !== null)
                 this._titleWidget.subtitle = this._account.displayName;
         }
     }
@@ -105,16 +132,66 @@ export default class AccountDialog extends Adw.Dialog {
         }
 
         /* Load saved token */
-        const token = await accounts.getAccountToken(this._account.id);
+        const tokenPayload = await accounts.getAccountTokenPayload(
+            this._account.id,
+        );
+        const token = tokenPayload.access_token;
+        const authMethod = accounts.getAccountAuthMethod(this._account.id);
+        this._savedAuthMethod = authMethod;
+        this._oauthTokenPayload =
+            authMethod === 'oauth' ? tokenPayload : null;
+        this._authMethod.selected = authMethod === 'oauth' ? 1 : 0;
         this._accessToken.text = token;
+        this._savedExcludedRepositories =
+            accounts.getAccountExcludedRepositories(this._account.id);
+        this._excludedRepositories.text = joinRepositoryFilters(
+            this._savedExcludedRepositories,
+        );
 
         /* Token help text */
         this._accessTokenHelp.label = FORGES[this._account.forge].tokenText;
 
         /* Save current account token */
         this._account.token = token;
+        this._account.authMethod = authMethod;
 
+        this._updateAuthMethodState();
         this._onEntryChanged();
+    }
+
+    _getExcludedRepositories() {
+        return splitRepositoryFilters(this._excludedRepositories.text);
+    }
+
+    _filtersChanged() {
+        const current = this._getExcludedRepositories();
+        if (current.length !== this._savedExcludedRepositories.length) {
+            return true;
+        }
+
+        return current.some(
+            (filter, index) =>
+                filter !== this._savedExcludedRepositories[index],
+        );
+    }
+
+    _filtersValid() {
+        const error = validateRepositoryFilters(this._getExcludedRepositories());
+        if (error === null) {
+            this._excludedRepositories.remove_css_class('error');
+            return true;
+        }
+
+        this._excludedRepositories.add_css_class('error');
+        return false;
+    }
+
+    _getSelectedForgeClass() {
+        if (this.editing) {
+            return FORGES[this._account.forge];
+        }
+
+        return this._forges_ls[this._forge.selected];
     }
 
     /**
@@ -123,7 +200,7 @@ export default class AccountDialog extends Adw.Dialog {
      * @returns {string} The forge name
      */
     _getSelectedForge() {
-        return this._forges_ls[this._forge.selected].name;
+        return this._getSelectedForgeClass().name;
     }
 
     /**
@@ -132,10 +209,7 @@ export default class AccountDialog extends Adw.Dialog {
      * @returns {boolean} If it allows instances
      */
     _allowInstances() {
-        if (this.editing) {
-            return FORGES[this._account.forge].allowInstances;
-        }
-        return this._forges_ls[this._forge.selected].allowInstances;
+        return this._getSelectedForgeClass().allowInstances;
     }
 
     /**
@@ -145,13 +219,101 @@ export default class AccountDialog extends Adw.Dialog {
      * @returns {string} If it allows instances
      */
     _getInstanceURL() {
+        const forgeClass = this._getSelectedForgeClass();
         if (!this._allowInstances()) {
-            return this._forges_ls[this._forge.selected].defaultURL;
+            return forgeClass.defaultURL;
         }
 
         const url = this._validateUrl(this._instance.text);
         const host = this._getUriHost(url);
         return host;
+    }
+
+    _getSelectedAuthMethod() {
+        return this._authMethod.selected === 1 ? 'oauth' : 'token';
+    }
+
+    _forgeSupportsOAuth() {
+        const forgeClass = this._getSelectedForgeClass();
+        return (
+            forgeClass.authMethods.includes('oauth') &&
+            forgeClass.oauthConfig(this._getOAuthInstanceURL()) !== null
+        );
+    }
+
+    _getOAuthInstanceURL() {
+        const forgeClass = this._getSelectedForgeClass();
+        if (!forgeClass.allowInstances) {
+            return forgeClass.defaultURL;
+        }
+
+        try {
+            return this._getUriHost(this._validateUrl(this._instance.text));
+        } catch (_error) {
+            return forgeClass.defaultURL;
+        }
+    }
+
+    _getOAuthConfig() {
+        const forgeClass = this._getSelectedForgeClass();
+        if (!forgeClass.authMethods.includes('oauth')) {
+            return null;
+        }
+
+        return forgeClass.oauthConfig(this._getInstanceURL());
+    }
+
+    _getAccessTokenForSave() {
+        if (this._getSelectedAuthMethod() === 'oauth') {
+            return this._oauthTokenPayload?.access_token || '';
+        }
+
+        return this._accessToken.text;
+    }
+
+    _getSecretForSave() {
+        if (this._getSelectedAuthMethod() === 'oauth') {
+            return this._oauthTokenPayload;
+        }
+
+        return this._accessToken.text;
+    }
+
+    _updateAuthMethodState() {
+        const supportsOAuth = this._forgeSupportsOAuth();
+        if (!supportsOAuth && this._authMethod.selected === 1) {
+            this._authMethod.selected = 0;
+        }
+
+        const authMethod = this._getSelectedAuthMethod();
+        const usingOAuth = supportsOAuth && authMethod === 'oauth';
+
+        this._authMethod.visible = supportsOAuth;
+        this._accessToken.visible = !usingOAuth;
+        this._accessTokenHelp.visible = !usingOAuth;
+        this._oauthStatusRow.visible = usingOAuth;
+        this._oauthCode.visible = usingOAuth && this._oauthRequest !== null;
+
+        if (!usingOAuth) {
+            return;
+        }
+
+        if (this._oauthTokenPayload !== null) {
+            this._oauthStatusRow.subtitle = _(
+                'OAuth sign-in is ready for this account.',
+            );
+            this._oauthLogin.label = _('Sign In Again');
+        } else if (this._oauthRequest !== null) {
+            this._oauthStatusRow.subtitle = _(
+                'Paste the authorization code or redirect URL, then exchange it.',
+            );
+            this._oauthLogin.label = _('Exchange');
+        } else {
+            this._oauthStatusRow.subtitle = _(
+                'Sign in with your browser to request an access token.',
+            );
+            this._oauthLogin.label = _('Sign In');
+        }
     }
 
     /**
@@ -174,18 +336,20 @@ export default class AccountDialog extends Adw.Dialog {
     _onForgeChanged() {
         /* Enable or disable instance URL entry */
         this._instance.visible = this._allowInstances();
-        /* Token help text */
-        this._accessTokenHelp.label =
-            this._forges_ls[this._forge.selected].tokenText;
-
-        /* Entries may be different so validate again */
-        this._onEntryChanged();
 
         /* Load default instance url */
-        if (!this._userChangedInstance && this._account == null) {
-            this._instance.text =
-                this._forges_ls[this._forge.selected].defaultURL;
+        if (!this._userChangedInstance && this._account === null) {
+            this._instance.text = this._getSelectedForgeClass().defaultURL;
         }
+
+        /* Token help text */
+        this._accessTokenHelp.label = this._getSelectedForgeClass().tokenText;
+
+        this._oauthTokenPayload = null;
+        this._oauthRequest = null;
+        this._oauthCode.text = '';
+        this._updateAuthMethodState();
+        this._onEntryChanged();
     }
 
     /**
@@ -218,8 +382,81 @@ export default class AccountDialog extends Adw.Dialog {
     _onInstanceChanged() {
         this._userChangedInstance =
             !this.editing &&
-            this._instance.text !=
-                this._forges_ls[this._forge.selected].defaultURL;
+            this._instance.text !== this._getSelectedForgeClass().defaultURL;
+        this._updateAuthMethodState();
+        this._onEntryChanged();
+    }
+
+    _onAuthMethodChanged() {
+        this._updateAuthMethodState();
+        this._onEntryChanged();
+    }
+
+    async _onOAuthLogin() {
+        try {
+            const config = this._getOAuthConfig();
+            if (config === null) {
+                throw 'OAuthUnsupported';
+            }
+
+            this._oauthLogin.sensitive = false;
+            this._saveBtn.sensitive = false;
+
+            if (config.flow === 'device') {
+                this._oauthStatusRow.subtitle = _(
+                    'Waiting for browser authorization.',
+                );
+                this._oauthTokenPayload = await startDeviceOAuth(
+                    config,
+                    (device) => {
+                        const uri =
+                            device.verification_uri_complete ||
+                            device.verification_uri;
+                        this._oauthStatusRow.subtitle = _(
+                            'Enter the browser code shown by the provider.',
+                        );
+                        if (device.user_code) {
+                            this._oauthStatusRow.subtitle =
+                                this._oauthStatusRow.subtitle +
+                                ' ' +
+                                device.user_code;
+                        }
+                        openOAuthURI(uri);
+                    },
+                );
+            } else if (config.flow === 'pkce') {
+                if (this._oauthRequest === null) {
+                    this._oauthRequest = createPkceRequest(config);
+                    this._oauthCode.text = '';
+                    this._updateAuthMethodState();
+                    openOAuthURI(this._oauthRequest.authorizationUrl);
+                    return;
+                }
+
+                this._oauthTokenPayload = await exchangeAuthorizationCode(
+                    config,
+                    this._oauthRequest,
+                    this._oauthCode.text,
+                );
+                this._oauthRequest = null;
+                this._oauthCode.text = '';
+            } else {
+                throw 'OAuthUnsupported';
+            }
+
+            this._accessToken.text = this._oauthTokenPayload.access_token;
+        } catch (error) {
+            console.error(error);
+            this._toasts.add_toast(
+                new Adw.Toast({
+                    title: this._errorText(error),
+                }),
+            );
+        } finally {
+            this._oauthLogin.sensitive = true;
+            this._updateAuthMethodState();
+            this._onEntryChanged();
+        }
     }
 
     /**
@@ -230,21 +467,32 @@ export default class AccountDialog extends Adw.Dialog {
      */
     _onEntryChanged() {
         let valid = false;
+        const filtersValid = this._filtersValid();
+        const authMethod = this._getSelectedAuthMethod();
+        const authReady =
+            authMethod === 'token'
+                ? this._accessToken.text !== ''
+                : this._oauthTokenPayload !== null;
 
-        if (this.editing && this._account != null) {
-            const instances = FORGES[this._account.forge].allowInstances;
-            const urlChanged = this._account.url != this._instance.text;
-            const tokenChanged = this._account.token != this._accessToken.text;
-            const urlNotEmpty = this._instance.text != '';
-            const tokenNotEmpty = this._accessToken.text != '';
+        if (this.editing && this._account !== null) {
+            const instances = this._getSelectedForgeClass().allowInstances;
+            const urlChanged = this._account.url !== this._instance.text;
+            const authMethodChanged = authMethod !== this._savedAuthMethod;
+            const tokenChanged =
+                this._account.token !== this._getAccessTokenForSave();
+            const filtersChanged = this._filtersChanged();
+            const urlNotEmpty = this._instance.text !== '';
+            const authChanged = authMethodChanged || tokenChanged;
 
             if (instances) {
                 try {
                     this._validateUrl(this._instance.text);
                     this._instance.remove_css_class('error');
                     valid =
-                        (urlNotEmpty && tokenNotEmpty && urlChanged) ||
-                        (urlNotEmpty && tokenNotEmpty && tokenChanged);
+                        filtersValid &&
+                        urlNotEmpty &&
+                        authReady &&
+                        (urlChanged || authChanged || filtersChanged);
                 } catch (error) {
                     this._instance.add_css_class('error');
                     this._toasts.add_toast(
@@ -254,7 +502,10 @@ export default class AccountDialog extends Adw.Dialog {
                     );
                 }
             } else {
-                valid = tokenNotEmpty && tokenChanged;
+                valid =
+                    filtersValid &&
+                    authReady &&
+                    (authChanged || filtersChanged);
             }
         } else {
             if (this._allowInstances()) {
@@ -262,8 +513,9 @@ export default class AccountDialog extends Adw.Dialog {
                     this._validateUrl(this._instance.text);
                     this._instance.remove_css_class('error');
                     valid =
-                        this._accessToken.text != '' &&
-                        this._instance.text != '';
+                        filtersValid &&
+                        authReady &&
+                        this._instance.text !== '';
                 } catch (error) {
                     this._instance.add_css_class('error');
                     this._toasts.add_toast(
@@ -273,7 +525,7 @@ export default class AccountDialog extends Adw.Dialog {
                     );
                 }
             } else {
-                valid = this._accessToken.text != '';
+                valid = filtersValid && authReady;
             }
         }
 
@@ -291,6 +543,14 @@ export default class AccountDialog extends Adw.Dialog {
                 return _('Couldn’t authenticate the account');
             case 'FailedTokenScopes':
                 return _('The access token doesn’t have the needed scopes');
+            case 'OAuthExpired':
+                return _('The OAuth authorization expired');
+            case 'OAuthMissingCode':
+                return _('Paste the authorization code or redirect URL');
+            case 'OAuthStateMismatch':
+                return _('The OAuth response did not match this request');
+            case 'OAuthUnsupported':
+                return _('This forge does not support OAuth login yet');
             default:
                 return _('Unexpected error when creating the account');
         }
@@ -324,26 +584,45 @@ export default class AccountDialog extends Adw.Dialog {
             this._page.sensitive = false;
 
             /* Get form values */
-            const token = this._accessToken.text;
+            const authMethod = this._getSelectedAuthMethod();
+            const token = this._getAccessTokenForSave();
+            const secret = this._getSecretForSave();
             const url = this._getInstanceURL();
             const forgeName = this._getSelectedForge();
+            const excludedRepositories = this._getExcludedRepositories();
+
+            if (authMethod === 'oauth' && secret === null) {
+                throw 'OAuthMissingCode';
+            }
 
             /**
              * Instantiate the class for the forge
              * @type {import('../forges/forge.js').default}
              */
-            const forge = new FORGES[forgeName](url, token);
+            const forge = new FORGES[forgeName](
+                url,
+                token,
+                null,
+                null,
+                '',
+                [],
+                authMethod,
+            );
             /* Try authenticating the user with access token */
             const [userId, username] = await forge.getUser();
 
-            if (username != undefined) {
+            if (username !== undefined) {
                 /* Save account to settings */
                 await accounts.saveAccount(
                     forgeName,
                     url,
                     userId,
                     username,
-                    token,
+                    secret,
+                    {
+                        authMethod: authMethod,
+                        excludedRepositories: excludedRepositories,
+                    },
                 );
             }
 
@@ -354,7 +633,7 @@ export default class AccountDialog extends Adw.Dialog {
                 .lookup_action('reload')
                 .activate(null);
         } catch (error) {
-            console.log(error);
+            console.error(error);
             this._toasts.add_toast(
                 new Adw.Toast({
                     title: this._errorText(error),
@@ -377,8 +656,23 @@ export default class AccountDialog extends Adw.Dialog {
 
         /* Get and validate from values */
         const forgeClass = FORGES[this._account.forge];
-        let newToken = this._accessToken.text;
+        const authMethod = this._getSelectedAuthMethod();
+        const newToken = this._getAccessTokenForSave();
+        const newSecret = this._getSecretForSave();
         let newUrl = this._instance.text;
+        const excludedRepositories = this._getExcludedRepositories();
+        const filtersChanged = this._filtersChanged();
+
+        if (authMethod === 'oauth' && newSecret === null) {
+            this._toasts.add_toast(
+                new Adw.Toast({
+                    title: this._errorText('OAuthMissingCode'),
+                }),
+            );
+            this._page.sensitive = true;
+            return;
+        }
+
         if (!forgeClass.allowInstances) {
             newUrl = forgeClass.defaultURL;
         } else {
@@ -387,9 +681,21 @@ export default class AccountDialog extends Adw.Dialog {
         }
 
         /* Continue if some value has actually changed */
-        if (newToken != this._account.token || newUrl != this._account.url) {
+        if (
+            newToken !== this._account.token ||
+            newUrl !== this._account.url ||
+            authMethod !== this._savedAuthMethod
+        ) {
             try {
-                const forge = new forgeClass(newUrl, newToken);
+                const forge = new forgeClass(
+                    newUrl,
+                    newToken,
+                    null,
+                    null,
+                    '',
+                    [],
+                    authMethod,
+                );
                 const [userId, username] = await forge.getUser();
 
                 await accounts.updateAccount(
@@ -397,9 +703,16 @@ export default class AccountDialog extends Adw.Dialog {
                     newUrl,
                     userId,
                     username,
-                    newToken,
+                    newSecret,
+                    {
+                        authMethod: authMethod,
+                        excludedRepositories: excludedRepositories,
+                    },
                 );
 
+                Adw.Application.get_default().window.resetAccountForge(
+                    this._account.id,
+                );
                 this.close();
 
                 /* Reload notifications */
@@ -407,13 +720,27 @@ export default class AccountDialog extends Adw.Dialog {
                     .lookup_action('reload')
                     .activate(null);
             } catch (error) {
-                console.log(error);
+                console.error(error);
                 this._toasts.add_toast(
                     new Adw.Toast({
                         title: this._errorText(error),
                     }),
                 );
             }
+        } else if (filtersChanged) {
+            accounts.updateAccountSettings(this._account.id, {
+                excludedRepositories: excludedRepositories,
+            });
+
+            Adw.Application.get_default().window.resetAccountForge(
+                this._account.id,
+            );
+            this.close();
+
+            /* Reload notifications */
+            Adw.Application.get_default()
+                .lookup_action('reload')
+                .activate(null);
         }
 
         this._page.sensitive = true;

@@ -33,6 +33,7 @@ template $Gjs_NotificationRow : ListBoxRow {
             orientation: vertical;
             spacing: 3;
             valign: center;
+            hexpand: true;
 
             CenterBox {
                 orientation: horizontal;
@@ -78,6 +79,37 @@ template $Gjs_NotificationRow : ListBoxRow {
 
                     styles ["caption", "dim-label"]
                 }
+            }
+        }
+
+        Box {
+            orientation: horizontal;
+            spacing: 0;
+            valign: center;
+            margin-start: 6;
+
+            Button {
+                icon-name: "object-select-symbolic";
+                tooltip-text: _("Mark as Read");
+
+                clicked => $_onMarkRead();
+
+                styles [
+                    "flat",
+                    "circular"
+                ]
+            }
+
+            Button {
+                icon-name: "edit-clear-symbolic";
+                tooltip-text: _("Clear");
+
+                clicked => $_onClear();
+
+                styles [
+                    "flat",
+                    "circular"
+                ]
             }
         }
     }

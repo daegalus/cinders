@@ -1,9 +1,9 @@
 {
-    "id": "com.mardojai.ForgeSparks",
+    "id": "dev.yulian.Cinders",
     "runtime": "org.gnome.Platform",
-    "runtime-version": "48",
+    "runtime-version": "50",
     "sdk": "org.gnome.Sdk",
-    "command": "forge-sparks",
+    "command": "cinders",
     "finish-args": [
         "--share=ipc",
         "--socket=fallback-x11",
@@ -43,7 +43,7 @@
             ]
         },
         {
-            "name": "forge-sparks",
+            "name": "cinders",
             "buildsystem": "meson",
             "builddir": true,
             "sources": [

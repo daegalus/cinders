@@ -1,7 +1,7 @@
 <?xml version="1.0" encoding="UTF-8" ?>
 <schemalist>
 
-  <schema id="@app_id@" path="/com/mardojai/ForgeSparks/" gettext-domain="@app_id@">
+  <schema id="@app_id@" path="/dev/yulian/Cinders/" gettext-domain="@app_id@">
     <key type="b" name="first-run">
       <default>false</default>
     </key>
@@ -23,10 +23,16 @@
     <key type="a{ss}" name="notified">
       <default>{}</default>
     </key>
+    <key type="a{ss}" name="dismissed">
+      <default>{}</default>
+    </key>
   </schema>
 
   <!-- Account -->
   <schema id="@app_id@.account">
+    <key name="auth-method" type="s">
+      <default>'token'</default>
+    </key>
     <key name="forge" type="s">
       <default>'github'</default>
     </key>
@@ -38,6 +44,9 @@
     </key>
     <key name="user-id" type="i">
       <default>0</default>
+    </key>
+    <key name="excluded-repositories" type="as">
+      <default>[]</default>
     </key>
   </schema>
 </schemalist>

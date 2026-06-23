@@ -29,7 +29,7 @@ bin_conf.set('libdir', libdir)
 bin_conf.set('datadir', datadir)
 
 configure_file(
-  input: 'com.mardojai.ForgeSparks',
+  input: 'dev.yulian.Cinders',
   output: application_id,
   configuration: bin_conf,
   install: true,

@@ -1,11 +1,12 @@
 
 desktop_conf = configuration_data()
 desktop_conf.set('app_id', application_id)
+desktop_conf.set('command', meson.project_name())
 desktop_file = i18n.merge_file(
   input: configure_file(
-  	input: 'com.mardojai.ForgeSparks.desktop.in.in',
-  	output: 'com.mardojai.ForgeSparks.desktop.in',
-  	configuration: desktop_conf
+    input: 'dev.yulian.Cinders.desktop.in.in',
+    output: 'dev.yulian.Cinders.desktop.in',
+    configuration: desktop_conf
   ),
   output: '@0@.desktop'.format(application_id),
   type: 'desktop',
@@ -25,8 +26,8 @@ appstream_conf = configuration_data()
 appstream_conf.set('app_id', application_id)
 appstream_file = i18n.merge_file(
   input: configure_file(
-    input: 'com.mardojai.ForgeSparks.metainfo.xml.in.in',
-    output: 'com.mardojai.ForgeSparks.metainfo.xml.in',
+    input: 'dev.yulian.Cinders.metainfo.xml.in.in',
+    output: 'dev.yulian.Cinders.metainfo.xml.in',
     configuration: appstream_conf
   ),
   output: '@0@.metainfo.xml'.format(application_id),
@@ -46,7 +47,7 @@ endif
 gschema_conf = configuration_data()
 gschema_conf.set('app_id', application_id)
 configure_file(
-  input: 'com.mardojai.ForgeSparks.gschema.xml',
+  input: 'dev.yulian.Cinders.gschema.xml',
   output: '@0@.gschema.xml'.format(application_id),
   configuration: gschema_conf,
   install: true,
@@ -63,20 +64,28 @@ endif
 service_conf = configuration_data()
 service_conf.set('app_id', application_id)
 service_conf.set('bindir', bindir)
+service_conf.set('command', meson.project_name())
 configure_file(
-  input: 'com.mardojai.ForgeSparks.service.in',
+  input: 'dev.yulian.Cinders.service.in',
   output: '@0@.service'.format(application_id),
   configuration: service_conf,
   install_dir: datadir / 'dbus-1/services'
 )
 
+if profile == 'Devel'
+  app_icon = 'dev.yulian.CindersDevel.svg'
+else
+  app_icon = 'dev.yulian.Cinders.svg'
+endif
+
 install_data(
-  '@0@.svg'.format(application_id),
-  install_dir: datadir / 'icons/hicolor/scalable/apps'
+  app_icon,
+  install_dir: datadir / 'icons/hicolor/scalable/apps',
+  rename: '@0@.svg'.format(application_id)
 )
 
 install_data(
-  'com.mardojai.ForgeSparks-symbolic.svg',
+  'dev.yulian.Cinders-symbolic.svg',
   install_dir: datadir / 'icons/hicolor/symbolic/apps',
   rename: '@0@-symbolic.svg'.format(application_id)
 )

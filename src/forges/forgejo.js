@@ -22,4 +22,12 @@ export default class Forgejo extends Gitea {
     static allowInstances = true;
 
     static defaultURL = 'codeberg.org';
+
+    static oauthConfig(url) {
+        return {
+            ...super.oauthConfig(url),
+            provider: this.name,
+            clientId: 'FORGE_SPARKS_FORGEJO_CLIENT_ID',
+        };
+    }
 }

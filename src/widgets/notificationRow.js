@@ -14,6 +14,8 @@ export default class NotificationRow extends Gtk.ListBoxRow {
                 InternalChildren: ['iconStack', 'icon'],
                 Signals: {
                     activated: {},
+                    'mark-read': {},
+                    clear: {},
                 },
                 Properties: {
                     title: GObject.ParamSpec.string(
@@ -122,6 +124,14 @@ export default class NotificationRow extends Gtk.ListBoxRow {
 
             this._previous_parent = this.parent;
         }
+    }
+
+    _onMarkRead() {
+        this.emit('mark-read');
+    }
+
+    _onClear() {
+        this.emit('clear');
     }
 
     /**

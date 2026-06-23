@@ -22,6 +22,21 @@ export default class GitHub extends Forge {
 
     static scopes = ['notifications', 'read:user'];
 
+    static authMethods = ['token', 'oauth'];
+
+    static oauthConfig(url) {
+        const host = url === this.defaultURL ? 'github.com' : url;
+
+        return {
+            provider: this.name,
+            flow: 'device',
+            clientId: 'FORGE_SPARKS_GITHUB_CLIENT_ID',
+            scopes: [...this.scopes, 'repo'],
+            deviceCodeUrl: `https://${host}/login/device/code`,
+            tokenUrl: `https://${host}/login/oauth/access_token`,
+        };
+    }
+
     static get tokenText() {
         const tokenURL = 'https://github.com/settings/tokens';
         const tokenHelpURL =
@@ -37,7 +52,7 @@ export default class GitHub extends Forge {
         tokenText += '\n\n';
         /* GitHub access token help */
         tokenText += _(
-            'Forge Sparks requires a <b>classic</b> access token (for general use) with the <i>notifications</i> and <i>read:user</i> scopes granted.',
+            'Cinders requires a <b>classic</b> access token (for general use) with the <i>notifications</i> and <i>read:user</i> scopes granted.',
         );
         tokenText += ' ';
         /* GitHub access token help */
@@ -59,13 +74,11 @@ export default class GitHub extends Forge {
             );
             const contents = super.readContents(bytes);
 
-            console.log(`${url} response resulted in ${message.get_status()}`);
-
-            if (message.get_status() == '401') {
+            if (message.get_status() === 401) {
                 throw 'FailedForgeAuth';
-            } else if (message.get_status() == '403') {
+            } else if (message.get_status() === 403) {
                 throw 'FailedTokenScopes';
-            } else if (message.get_status() != '200') {
+            } else if (message.get_status() !== 200) {
                 throw 'Unexpected';
             } else if (!('login' in contents) || !('id' in contents)) {
                 throw 'Unexpected';
@@ -79,7 +92,7 @@ export default class GitHub extends Forge {
                 GLib.PRIORITY_DEFAULT,
                 null,
             );
-            if (messageNotify.get_status() == '403') {
+            if (messageNotify.get_status() === 403) {
                 /* Unauthorized, token scopes */
                 throw 'FailedTokenScopes';
             }
@@ -103,15 +116,19 @@ export default class GitHub extends Forge {
             );
             const contents = super.readContents(bytes);
 
-            console.log(`${url} response resulted in ${message.get_status()}`);
             /* this.modifiedSince = headers.get_one('Last-Modified') ?? this.modifiedSince; */
 
-            if (message.get_status() == '200') {
+            if (message.get_status() === 200) {
                 /* Show notifications */
                 let notifications = [];
 
                 for (const item of contents) {
                     try {
+                        const repository = item.repository.full_name;
+                        if (super.isRepositoryExcluded(repository)) {
+                            continue;
+                        }
+
                         const info = await this._getSubjectInfo(item);
                         const notification = new Notification({
                             id: super.formatID(item.id),
@@ -122,7 +139,7 @@ export default class GitHub extends Forge {
                                     ? info.updated_at
                                     : item.updated_at,
                             title: item.subject.title,
-                            repository: item.repository.full_name,
+                            repository: repository,
                             url: info.url,
                             account_name: this.accountName,
                         });
@@ -136,10 +153,10 @@ export default class GitHub extends Forge {
                 }
 
                 return notifications;
-            } else if (message.get_status() == '401') {
+            } else if (message.get_status() === 401) {
                 /* Auth failed, revoked or expired token */
                 throw 'FailedForgeAuth';
-            } else if (message.get_status() == '403') {
+            } else if (message.get_status() === 403) {
                 /* Unauthorized, token scopes */
                 throw 'FailedTokenScopes';
             } else {
@@ -152,7 +169,7 @@ export default class GitHub extends Forge {
 
     async markAsRead(id = null) {
         try {
-            if (id != null) {
+            if (id !== null) {
                 const url = this.buildURI(`/notifications/threads/${id}`);
                 const message = super.createMessage('PATCH', url);
                 await session.send_and_read_async(
@@ -162,7 +179,7 @@ export default class GitHub extends Forge {
                 );
 
                 /* If Reset-Content */
-                return message.get_status() == '205';
+                return message.get_status() === 205;
             } else {
                 const now = GLib.DateTime.new_now_utc();
                 const url = this.buildURI('notifications');
@@ -178,8 +195,8 @@ export default class GitHub extends Forge {
 
                 /* If Accepted or Reset-Content */
                 return (
-                    message.get_status() == '202' ||
-                    message.get_status() == '205'
+                    message.get_status() === 202 ||
+                    message.get_status() === 205
                 );
             }
         } catch (e) {
@@ -241,7 +258,7 @@ export default class GitHub extends Forge {
             );
             const contents = super.readContents(bytes);
 
-            if (message.get_status() == '200') {
+            if (message.get_status() === 200) {
                 info.state = contents.state;
                 /* info.updated_at = contents.updated_at */
                 info.url = contents.html_url;
@@ -252,15 +269,15 @@ export default class GitHub extends Forge {
                         info.state = 'draft';
                     }
                     if (
-                        contents.state == 'closed' &&
-                        contents.merged_at == null
+                        contents.state === 'closed' &&
+                        contents.merged_at === null
                     ) {
                         info.state = 'denied';
                     }
                 }
 
                 /* Get comment url */
-                if (notification.reason != 'subscribed') {
+                if (notification.reason !== 'subscribed') {
                     if (
                         notification.subject.type === 'Issue' ||
                         notification.subject.type === 'PullRequest'
@@ -274,7 +291,7 @@ export default class GitHub extends Forge {
 
                 /* Add notification referrer to url */
                 /* Only if forge is GitHub */
-                if (this.constructor.name === 'github') {
+                if (this.constructor.name === 'GitHub') {
                     const referrer = this._getNotificationReferrerID(
                         notification.id,
                     );

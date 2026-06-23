@@ -30,6 +30,13 @@ export default class Account extends GObject.Object {
                         GObject.ParamFlags.READWRITE,
                         null,
                     ),
+                    'auth-method': GObject.ParamSpec.string(
+                        'auth_method',
+                        null,
+                        null,
+                        GObject.ParamFlags.READWRITE,
+                        'token',
+                    ),
                     url: GObject.ParamSpec.string(
                         'url',
                         null,
@@ -126,6 +133,24 @@ export default class Account extends GObject.Object {
 
         this._forge = value;
         this.notify('forge');
+    }
+
+    /**
+     * Account authentication method
+     *
+     * @type {string}
+     */
+    get authMethod() {
+        if (this._authMethod === undefined) this._authMethod = 'token';
+
+        return this._authMethod;
+    }
+
+    set authMethod(value) {
+        if (this._authMethod === value) return;
+
+        this._authMethod = value;
+        this.notify('auth-method');
     }
 
     /**

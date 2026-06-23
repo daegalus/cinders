@@ -88,9 +88,10 @@ export default class Window extends Adw.ApplicationWindow {
         /* Listen to accounts model changes */
         accounts.connect('items-changed', () => {
             /* Show setup view if not accounts configured */
-            if (accounts.get_n_items() == 0) {
+            if (accounts.get_n_items() === 0) {
                 this._mainStack.set_visible_child_name('setup');
             }
+            this._pruneForgeInstances();
         });
 
         /* Setup notifications model */
@@ -98,6 +99,9 @@ export default class Window extends Adw.ApplicationWindow {
         this.notified = settings
             .get_value('notified')
             .deepUnpack(); /* Notifications that have been notified {id: timestamp} */
+        this.dismissed = settings
+            .get_value('dismissed')
+            .deepUnpack(); /* Notifications hidden locally {id: timestamp} */
         this.model.connect('items-changed', (_pos, _rmv, _add) => {
             if (this.model.get_n_items() > 0) {
                 this._notificationsStack.set_visible_child_name('list');
@@ -167,7 +171,7 @@ export default class Window extends Adw.ApplicationWindow {
         this.networkError = false;
         const app = this.get_application();
 
-        if (this._retryHandler != undefined) {
+        if (this._retryHandler !== undefined) {
             accounts.disconnect(this._retryHandler);
         }
 
@@ -195,19 +199,23 @@ export default class Window extends Adw.ApplicationWindow {
             /* Init a corresponding forge instance for the account if isn't yet */
             if (
                 !(account.id in this.forges) ||
-                this.forges[account.id] == undefined
+                this.forges[account.id] === undefined
             ) {
                 try {
                     const token = await accounts.getAccountToken(account.id);
+                    const excludedRepositories =
+                        accounts.getAccountExcludedRepositories(account.id);
                     this.forges[account.id] = new FORGES[account.forge](
                         account.url,
                         token,
                         account.id,
                         account.userId,
                         account.displayName,
+                        excludedRepositories,
+                        account.authMethod,
                     );
 
-                    /* Fetch user ID for older accounts (Forge Sparks =< 0.2) */
+                    /* Fetch user ID for older accounts. */
                     if (account.userId === 0) {
                         const [userId, _username] =
                             await this.forges[account.id].getUser();
@@ -219,6 +227,11 @@ export default class Window extends Adw.ApplicationWindow {
                     console.error(error);
                 }
             }
+            if (this.forges[account.id] === undefined) {
+                continue;
+            }
+            this.forges[account.id].excludedRepositories =
+                accounts.getAccountExcludedRepositories(account.id);
 
             /* Get notifications from forge */
             try {
@@ -227,7 +240,7 @@ export default class Window extends Adw.ApplicationWindow {
                 newNotifications.push(...notifications);
 
                 /* Reset failed state */
-                if (this.authFailed == account.id) {
+                if (this.authFailed === account.id) {
                     this._resolveTokenError(account);
                 }
             } catch (error) {
@@ -279,7 +292,7 @@ export default class Window extends Adw.ApplicationWindow {
                         notification.set_default_action('app.activate');
                         notification.add_button(_('Accounts'), 'app.accounts');
                         app.send_notification(
-                            'forge-sparks-error-auth',
+                            'cinders-error-auth',
                             notification,
                         );
                         this.authErrorNotified = true;
@@ -319,7 +332,7 @@ export default class Window extends Adw.ApplicationWindow {
     reload() {
         if (!this.fetching) {
             /* Remove current timeout */
-            if (this._subscribeSource != undefined) {
+            if (this._subscribeSource !== undefined) {
                 GLib.Source.remove(this._subscribeSource);
                 this._subscribeSource = undefined;
             }
@@ -334,6 +347,27 @@ export default class Window extends Adw.ApplicationWindow {
     }
 
     /**
+     * Reset a cached account forge instance
+     *
+     * @param {string} id Account ID
+     */
+    resetAccountForge(id) {
+        delete this.forges[id];
+    }
+
+    /**
+     * Remove cached forge instances for deleted accounts
+     */
+    _pruneForgeInstances() {
+        const accountIDs = accounts.getAccounts();
+        Object.keys(this.forges).forEach((id) => {
+            if (!accountIDs.includes(id)) {
+                delete this.forges[id];
+            }
+        });
+    }
+
+    /**
      * Show notifications to the user
      *
      * Updates notification model and sends desktop notifications
@@ -342,11 +376,29 @@ export default class Window extends Adw.ApplicationWindow {
      */
     showNotifications(notifications) {
         const app = this.get_application();
+        const currentNotifications = {};
+
+        for (const notification of notifications) {
+            currentNotifications[notification.id] = notification.updatedAt;
+        }
+
+        Object.keys(this.dismissed).forEach((id) => {
+            if (
+                !(id in currentNotifications) ||
+                this.dismissed[id] !== currentNotifications[id]
+            ) {
+                delete this.dismissed[id];
+            }
+        });
+        this._saveDismissed();
 
         this.model.clear(); /* Clear list */
 
         /* Loop new notifications and populate the model */
         for (const notification of notifications) {
+            if (this.dismissed[notification.id] === notification.updatedAt) {
+                continue;
+            }
             this.model.append(notification);
         }
 
@@ -359,8 +411,8 @@ export default class Window extends Adw.ApplicationWindow {
                 /* If notification hasn't been notified before or has changed
                    since last time, send desktop notification */
                 if (
-                    (!notification.id) in this.notified ||
-                    this.notified[notification.id] != notification.updatedAt
+                    !(notification.id in this.notified) ||
+                    this.notified[notification.id] !== notification.updatedAt
                 ) {
                     app.send_notification(
                         `fs-${notification.id}`,
@@ -383,13 +435,24 @@ export default class Window extends Adw.ApplicationWindow {
         }
 
         /* Save notified ids so if the app restarts we don't notify again */
+        this._saveNotified();
+
+        /* Stop loading view, and show notifications view */
+        this._mainStack.set_visible_child_name('notifications');
+    }
+
+    _saveNotified() {
         settings.set_value(
             'notified',
             new GLib.Variant('a{ss}', this.notified),
         );
+    }
 
-        /* Stop loading view, and show notifications view */
-        this._mainStack.set_visible_child_name('notifications');
+    _saveDismissed() {
+        settings.set_value(
+            'dismissed',
+            new GLib.Variant('a{ss}', this.dismissed),
+        );
     }
 
     /**
@@ -406,11 +469,42 @@ export default class Window extends Adw.ApplicationWindow {
 
         /* Mark as read */
         const [account, notification] = extractID(id);
+        if (!(account in this.forges)) {
+            return false;
+        }
+
         const success = await this.forges[account].markAsRead(notification);
         if (success) {
             /* Remove it from list model */
             this.model.removeByID(id);
+            delete this.dismissed[id];
+            delete this.notified[id];
+            this._saveDismissed();
+            this._saveNotified();
         }
+
+        return success;
+    }
+
+    /**
+     * Hide a notification locally without changing upstream read state
+     *
+     * @param {string} id Notification ID
+     */
+    clearNotification(id) {
+        const notification = this.model.getByID(id);
+        if (notification === null) {
+            return;
+        }
+
+        const app = this.get_application();
+        app.withdraw_notification(`fs-${id}`);
+
+        this.dismissed[id] = notification.updatedAt;
+        delete this.notified[id];
+        this.model.removeByID(id);
+        this._saveDismissed();
+        this._saveNotified();
     }
 
     /**
@@ -422,17 +516,20 @@ export default class Window extends Adw.ApplicationWindow {
         this._notificationsList.sensitive = false;
         this._markAsReadIcon.set_visible_child_name('spinner');
 
-        /* Mark as read all notifications on all accounts */
-        for (const id in this.forges) {
+        const notificationIDs = [];
+        for (let i = 0; i < this.model.get_n_items(); i++) {
+            notificationIDs.push(this.model.get_item(i).id);
+        }
+
+        /* Mark visible notifications as read */
+        for (const id of notificationIDs) {
             try {
-                await this.forges[id].markAsRead();
+                await this.resolveNotification(id);
             } catch (error) {
                 /* TODO: Notify the user that this failed */
                 console.error(error);
             }
         }
-
-        this.model.clear(); /* Clear list model */
 
         /* Revert ongoing progress status */
         this._markAsRead.sensitive = true;
@@ -478,6 +575,27 @@ export default class Window extends Adw.ApplicationWindow {
             );
         });
 
+        row.connect('mark-read', async (row) => {
+            row.progress = true;
+            row.sensitive = false;
+
+            try {
+                const success = await this.resolveNotification(notification.id);
+                if (!success) {
+                    row.progress = false;
+                    row.sensitive = true;
+                }
+            } catch (error) {
+                console.error(error);
+                row.progress = false;
+                row.sensitive = true;
+            }
+        });
+
+        row.connect('clear', () => {
+            this.clearNotification(notification.id);
+        });
+
         return row;
     }
 
@@ -507,10 +625,10 @@ export default class Window extends Adw.ApplicationWindow {
     _resolveTokenError(account = null) {
         this.authFailed = null;
         this.authErrorNotified = false;
-        if (account != null) account.authFailed = false;
+        if (account !== null) account.authFailed = false;
 
         this._accountBanner.revealed = false;
         const app = this.get_application();
-        app.withdraw_notification('forge-sparks-error-auth');
+        app.withdraw_notification('cinders-error-auth');
     }
 }

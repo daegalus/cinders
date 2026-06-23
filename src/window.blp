@@ -20,7 +20,7 @@ menu menu {
 
     item {
       action: "app.about";
-      label: _("About Forge Sparks");
+      label: _("About Cinders");
     }
   }
 
@@ -37,7 +37,7 @@ template $Gjs_Window : Adw.ApplicationWindow {
   default-height: 500;
   width-request: 360;
   height-request: 200;
-  title: _("Forge Sparks");
+  title: _("Cinders");
 
   notify::visible => $_onWindowHide();
 
@@ -64,7 +64,7 @@ template $Gjs_Window : Adw.ApplicationWindow {
         }
 
         Adw.StatusPage setupPage {
-          title: _("Welcome to Forge Sparks");
+          title: _("Welcome to Cinders");
           description: _("Add an account to receive notifications from");
           vexpand: true;
 
