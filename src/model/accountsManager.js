@@ -297,6 +297,36 @@ export default class AccountsManager extends GObject.Object {
     }
 
     /**
+     * Update only the account secret payload.
+     *
+     * @param  {string} id Account id
+     * @param  {string} url Account forge url
+     * @param  {string|Object} token Account access token or OAuth token data
+     * @throws Throws an error if failed updating the account secret
+     * @return {Promise<boolean>} If the account secret was successfully updated
+     */
+    async updateAccountSecret(id, url, token) {
+        const label = 'Access token for ' + url;
+        const secret = serializeSecret(token);
+
+        const successRemove = await Secret.password_clear(
+            SECRETS_SCHEMA,
+            { id: id },
+            null,
+        );
+        const successAdd = await Secret.password_store(
+            SECRETS_SCHEMA,
+            { id: id },
+            Secret.COLLECTION_DEFAULT,
+            label,
+            secret,
+            null,
+        );
+
+        return successRemove && successAdd;
+    }
+
+    /**
      * Update account settings that do not require changing the secret
      *
      * @param {string} id Account id

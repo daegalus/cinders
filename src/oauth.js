@@ -103,6 +103,9 @@ function normalizeScopes(scopes) {
 }
 
 function normalizeToken(config, token) {
+    const createdAt = Number(token.created_at || Math.floor(Date.now() / 1000));
+    const expiresIn = Number(token.expires_in || 0);
+
     return {
         type: 'oauth',
         provider: config.provider,
@@ -111,8 +114,11 @@ function normalizeToken(config, token) {
         refresh_token: token.refresh_token || '',
         token_type: token.token_type || 'bearer',
         scope: token.scope || normalizeScopes(config.scopes),
-        expires_in: Number(token.expires_in || 0),
-        created_at: Math.floor(Date.now() / 1000),
+        expires_in: expiresIn,
+        created_at: createdAt,
+        expires_at: expiresIn
+            ? new Date((createdAt + expiresIn) * 1000).toISOString()
+            : '',
     };
 }
 
@@ -163,7 +169,13 @@ export function parseSecret(secret) {
     };
 }
 
-export async function startDeviceOAuth(config, onDeviceCode = null) {
+export async function startDeviceOAuth(config, callbacks = null) {
+    const onDeviceCode =
+        typeof callbacks === 'function'
+            ? callbacks
+            : callbacks?.onDeviceCode || null;
+    const onPoll =
+        typeof callbacks === 'object' ? callbacks?.onPoll || null : null;
     const device = await postForm(config.deviceCodeUrl, {
         client_id: config.clientId,
         scope: normalizeScopes(config.scopes),
@@ -179,9 +191,28 @@ export async function startDeviceOAuth(config, onDeviceCode = null) {
 
     let interval = Number(device.interval || config.interval || 5);
     const expiresAt = Date.now() + Number(device.expires_in || 900) * 1000;
+    let attempt = 0;
 
     while (Date.now() < expiresAt) {
+        if (onPoll !== null) {
+            onPoll({
+                state: 'waiting',
+                attempt: attempt,
+                interval: interval,
+                expiresAt: expiresAt,
+            });
+        }
         await waitSeconds(interval);
+        attempt += 1;
+
+        if (onPoll !== null) {
+            onPoll({
+                state: 'checking',
+                attempt: attempt,
+                interval: interval,
+                expiresAt: expiresAt,
+            });
+        }
 
         const token = await postForm(config.tokenUrl, {
             client_id: config.clientId,
@@ -190,14 +221,38 @@ export async function startDeviceOAuth(config, onDeviceCode = null) {
         });
 
         if (token.access_token) {
+            if (onPoll !== null) {
+                onPoll({
+                    state: 'authorized',
+                    attempt: attempt,
+                    interval: interval,
+                    expiresAt: expiresAt,
+                });
+            }
             return normalizeToken(config, token);
         }
 
         switch (token.error) {
             case 'authorization_pending':
+                if (onPoll !== null) {
+                    onPoll({
+                        state: 'pending',
+                        attempt: attempt,
+                        interval: interval,
+                        expiresAt: expiresAt,
+                    });
+                }
                 break;
             case 'slow_down':
                 interval = Number(token.interval || interval + 5);
+                if (onPoll !== null) {
+                    onPoll({
+                        state: 'slow_down',
+                        attempt: attempt,
+                        interval: interval,
+                        expiresAt: expiresAt,
+                    });
+                }
                 break;
             case 'expired_token':
             case 'token_expired':
@@ -281,6 +336,47 @@ export async function exchangeAuthorizationCode(config, request, codeOrUrl) {
     }
 
     return normalizeToken(config, token);
+}
+
+export function tokenExpiresSoon(tokenPayload, thresholdSeconds = 120) {
+    const expiresIn = Number(tokenPayload?.expires_in || 0);
+    if (!expiresIn) {
+        return false;
+    }
+
+    const createdAt = Number(tokenPayload?.created_at || 0);
+    if (!createdAt) {
+        return false;
+    }
+
+    const secondsRemaining =
+        createdAt + expiresIn - Math.floor(Date.now() / 1000);
+    return secondsRemaining < thresholdSeconds;
+}
+
+export async function refreshOAuthToken(config, tokenPayload) {
+    if (!tokenPayload?.refresh_token) {
+        throw 'OAuthExpired';
+    }
+
+    const token = await postForm(config.tokenUrl, {
+        client_id: config.clientId,
+        client_secret: config.clientSecret,
+        grant_type: 'refresh_token',
+        refresh_token: tokenPayload.refresh_token,
+        redirect_uri: config.redirectUri,
+    });
+
+    if (!token.access_token) {
+        throw token.error || 'OAuthUnexpected';
+    }
+
+    const refreshed = normalizeToken(config, token);
+    if (!refreshed.refresh_token) {
+        refreshed.refresh_token = tokenPayload.refresh_token;
+    }
+
+    return refreshed;
 }
 
 export function openOAuthURI(uri) {

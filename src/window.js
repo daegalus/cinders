@@ -109,6 +109,9 @@ export default class Window extends Adw.ApplicationWindow {
                 this._notificationsStack.set_visible_child_name('empty');
             }
             this._markAsRead.visible = this.model.get_n_items() > 0;
+            this.get_application().updateIndicatorCount(
+                this.model.get_n_items(),
+            );
         });
 
         /* Sort the model by timestamp */
@@ -202,7 +205,9 @@ export default class Window extends Adw.ApplicationWindow {
                 this.forges[account.id] === undefined
             ) {
                 try {
-                    const token = await accounts.getAccountToken(account.id);
+                    const tokenPayload =
+                        await accounts.getAccountTokenPayload(account.id);
+                    const token = tokenPayload.access_token;
                     const excludedRepositories =
                         accounts.getAccountExcludedRepositories(account.id);
                     this.forges[account.id] = new FORGES[account.forge](
@@ -213,6 +218,7 @@ export default class Window extends Adw.ApplicationWindow {
                         account.displayName,
                         excludedRepositories,
                         account.authMethod,
+                        tokenPayload,
                     );
 
                     /* Fetch user ID for older accounts. */

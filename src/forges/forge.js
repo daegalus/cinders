@@ -66,6 +66,7 @@ export default class Forge {
      * @param {string} accountName Account name associated to the instance
      * @param {Array<string>} excludedRepositories Repository filters to exclude
      * @param {string} authMethod Account authentication method
+     * @param {Object|null} tokenPayload Full stored token payload
      */
     constructor(
         url,
@@ -75,6 +76,7 @@ export default class Forge {
         accountName = '',
         excludedRepositories = [],
         authMethod = 'token',
+        tokenPayload = null,
     ) {
         /**
          * URL passed when the class was instantiated, the same as
@@ -87,6 +89,12 @@ export default class Forge {
          * authentication
          */
         this.token = token;
+
+        /**
+         * Full account token payload, used by providers that need metadata
+         * such as refresh tokens or DPoP keys.
+         */
+        this.tokenPayload = tokenPayload;
 
         /**
          * Account ID on Cinders settings

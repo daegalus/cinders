@@ -5,7 +5,11 @@ import { gettext as _ } from 'gettext';
 
 import Forge from './forge.js';
 import GitHub from './github.js';
+import AccountsManager from '../model/accountsManager.js';
+import { refreshOAuthToken, tokenExpiresSoon } from '../oauth.js';
 import { session } from './../util.js';
+
+const accounts = new AccountsManager();
 
 /**
  * Gitea implementation
@@ -53,6 +57,36 @@ export default class Gitea extends GitHub {
         return tokenText;
     }
 
+    async _refreshOAuthTokenIfNeeded() {
+        if (
+            this.authMethod !== 'oauth' ||
+            !this.tokenPayload?.refresh_token ||
+            !tokenExpiresSoon(this.tokenPayload)
+        ) {
+            return;
+        }
+
+        const refreshed = await refreshOAuthToken(
+            this.constructor.oauthConfig(this.url),
+            this.tokenPayload,
+        );
+        this.tokenPayload = refreshed;
+        this.token = refreshed.access_token;
+
+        if (this.account !== null) {
+            await accounts.updateAccountSecret(
+                this.account,
+                this.url,
+                refreshed,
+            );
+        }
+    }
+
+    async createMessage(method, url, data = null, headers = {}) {
+        await this._refreshOAuthTokenIfNeeded();
+        return super.createMessage(method, url, data, headers);
+    }
+
     async markAsRead(id = null) {
         /**
          * Gitea differs from GitHub's markAsRead, params are url queries
@@ -60,7 +94,7 @@ export default class Gitea extends GitHub {
         try {
             if (id !== null) {
                 const url = this.buildURI(`/notifications/threads/${id}`);
-                const message = super.createMessage('PATCH', url);
+                const message = await this.createMessage('PATCH', url);
                 await session.send_and_read_async(
                     message,
                     GLib.PRIORITY_DEFAULT,
@@ -75,7 +109,7 @@ export default class Gitea extends GitHub {
                     last_read_at: now.format_iso8601(),
                     all: true,
                 });
-                const message = super.createMessage('PUT', url);
+                const message = await this.createMessage('PUT', url);
                 await session.send_and_read_async(
                     message,
                     GLib.PRIORITY_DEFAULT,

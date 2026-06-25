@@ -78,6 +78,90 @@ template $Gjs_AccountDialog : Adw.Dialog {
             }
           }
 
+          Label oauthStatus {
+            visible: false;
+            wrap: true;
+            xalign: 0;
+            margin-start: 12;
+            margin-end: 12;
+            margin-top: 6;
+            margin-bottom: 6;
+
+            styles ["caption", "dim-label"]
+          }
+
+          Adw.EntryRow oauthDeviceCode {
+            title: _("Device Code");
+            visible: false;
+            editable: false;
+            show-apply-button: false;
+            input-purpose: free_form;
+          }
+
+          Adw.EntryRow oauthDeviceUri {
+            title: _("Verification URL");
+            visible: false;
+            editable: false;
+            show-apply-button: false;
+            input-purpose: url;
+          }
+
+          Box oauthDeviceActions {
+            visible: false;
+            halign: end;
+            spacing: 6;
+            margin-top: 6;
+
+            Button oauthCopyDeviceCode {
+              tooltip-text: _("Copy Device Code");
+
+              clicked => $_onOAuthCopyDeviceCode();
+
+              styles ["flat"]
+
+              Box {
+                spacing: 6;
+
+                Image {
+                  icon-name: "edit-copy-symbolic";
+                }
+
+                Label {
+                  label: _("Copy Code");
+                }
+              }
+            }
+
+            Button oauthOpenDeviceUri {
+              tooltip-text: _("Open Verification URL");
+
+              clicked => $_onOAuthOpenDeviceUri();
+
+              styles ["flat"]
+
+              Box {
+                spacing: 6;
+
+                Image {
+                  icon-name: "go-jump-symbolic";
+                }
+
+                Label {
+                  label: _("Open");
+                }
+              }
+            }
+          }
+
+          Adw.EntryRow oauthLoginHint {
+            title: _("AT Protocol Handle or DID");
+            visible: false;
+            show-apply-button: false;
+            input-purpose: free_form;
+
+            notify::text => $_onEntryChanged();
+          }
+
           Adw.EntryRow oauthCode {
             title: _("Authorization Code or Redirect URL");
             visible: false;
@@ -85,6 +169,20 @@ template $Gjs_AccountDialog : Adw.Dialog {
             input-purpose: url;
 
             notify::text => $_onEntryChanged();
+          }
+
+          Button oauthExchange {
+            label: _("Exchange Code");
+            visible: false;
+            halign: end;
+            margin-top: 6;
+
+            clicked => $_onOAuthExchange();
+
+            styles [
+              "suggested-action",
+              "pill"
+            ]
           }
 
           Adw.PasswordEntryRow accessToken {

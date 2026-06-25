@@ -23,11 +23,18 @@ export default class Forgejo extends Gitea {
 
     static defaultURL = 'codeberg.org';
 
+    static codebergClientId = '645e2e14-fd3c-4ec0-9c08-f043561eb843';
+
     static oauthConfig(url) {
+        const clientId =
+            url === this.defaultURL
+                ? this.codebergClientId
+                : 'FORGE_SPARKS_FORGEJO_CLIENT_ID';
+
         return {
             ...super.oauthConfig(url),
             provider: this.name,
-            clientId: 'FORGE_SPARKS_FORGEJO_CLIENT_ID',
+            clientId: clientId,
         };
     }
 }

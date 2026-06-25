@@ -12,6 +12,7 @@ import { settings } from './util.js';
 import Window from './window.js';
 import PreferencesDialog from './widgets/preferences.js';
 import AccountsDialog from './widgets/accountsDialog.js';
+import StatusIndicator from './statusIndicator.js';
 
 import './style.css';
 import './style-dark.css';
@@ -103,7 +104,7 @@ export default class Application extends Adw.Application {
 
         let reloadAction = new Gio.SimpleAction({ name: 'reload' });
         reloadAction.connect('activate', () => {
-            this.get_active_window().reload();
+            this.reload();
         });
         this.add_action(reloadAction);
 
@@ -137,6 +138,14 @@ export default class Application extends Adw.Application {
         super.vfunc_startup();
         console.log('Cinders:', pkg.name);
         console.log('Version:', pkg.version);
+
+        this.statusIndicator = new StatusIndicator(this);
+        this.statusIndicator.init();
+    }
+
+    vfunc_shutdown() {
+        this.statusIndicator?.destroy();
+        super.vfunc_shutdown();
     }
 
     vfunc_activate() {
@@ -213,5 +222,17 @@ export default class Application extends Adw.Application {
     _markAsRead(_action, param) {
         const [id, _length] = param.get_string();
         this.window.resolveNotification(id);
+    }
+
+    reload() {
+        if (!this.window) {
+            this.activate();
+        }
+
+        this.window?.reload();
+    }
+
+    updateIndicatorCount(count) {
+        this.statusIndicator?.updateCount(count);
     }
 }

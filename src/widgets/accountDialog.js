@@ -1,4 +1,5 @@
 import Adw from 'gi://Adw';
+import Gdk from 'gi://Gdk';
 import GLib from 'gi://GLib';
 import GObject from 'gi://GObject';
 import Gtk from 'gi://Gtk';
@@ -12,6 +13,10 @@ import {
     openOAuthURI,
     startDeviceOAuth,
 } from '../oauth.js';
+import {
+    exchangeAtprotoAuthorizationCode,
+    startAtprotoOAuth,
+} from '../atprotoOAuth.js';
 import {
     joinRepositoryFilters,
     splitRepositoryFilters,
@@ -33,7 +38,15 @@ export default class AccountDialog extends Adw.Dialog {
                     'authMethod',
                     'oauthStatusRow',
                     'oauthLogin',
+                    'oauthStatus',
+                    'oauthDeviceCode',
+                    'oauthDeviceUri',
+                    'oauthDeviceActions',
+                    'oauthCopyDeviceCode',
+                    'oauthOpenDeviceUri',
+                    'oauthLoginHint',
                     'oauthCode',
+                    'oauthExchange',
                     'accessToken',
                     'accessTokenHelp',
                     'excludedRepositories',
@@ -71,6 +84,7 @@ export default class AccountDialog extends Adw.Dialog {
         this._savedAuthMethod = 'token';
         this._oauthTokenPayload = null;
         this._oauthRequest = null;
+        this._oauthBusy = false;
 
         this.connect('notify::editing', this._onEditing.bind(this));
 
@@ -142,6 +156,8 @@ export default class AccountDialog extends Adw.Dialog {
             authMethod === 'oauth' ? tokenPayload : null;
         this._authMethod.selected = authMethod === 'oauth' ? 1 : 0;
         this._accessToken.text = token;
+        this._oauthLoginHint.text =
+            tokenPayload?.atproto?.identity?.handle || this._account.displayName;
         this._savedExcludedRepositories =
             accounts.getAccountExcludedRepositories(this._account.id);
         this._excludedRepositories.text = joinRepositoryFilters(
@@ -263,6 +279,109 @@ export default class AccountDialog extends Adw.Dialog {
         return forgeClass.oauthConfig(this._getInstanceURL());
     }
 
+    _getOAuthLoginHint() {
+        const value = this._oauthLoginHint.text.trim();
+        if (/^https?:\/\//i.test(value)) {
+            return value;
+        }
+
+        return value.startsWith('@') ? value.slice(1) : value;
+    }
+
+    _setOAuthStatus(message, tone = 'info') {
+        const styles = ['accent', 'success', 'warning', 'error', 'dim-label'];
+        for (const style of styles) {
+            this._oauthStatus.remove_css_class(style);
+        }
+
+        if (tone === 'success') {
+            this._oauthStatus.add_css_class('success');
+        } else if (tone === 'warning') {
+            this._oauthStatus.add_css_class('warning');
+        } else if (tone === 'error') {
+            this._oauthStatus.add_css_class('error');
+        } else if (tone === 'info') {
+            this._oauthStatus.add_css_class('accent');
+        } else {
+            this._oauthStatus.add_css_class('dim-label');
+        }
+
+        this._oauthStatus.label = message;
+        this._oauthStatus.visible = message !== '';
+    }
+
+    _clearOAuthStatus() {
+        this._oauthStatus.label = '';
+        this._oauthStatus.visible = false;
+    }
+
+    _clearOAuthDeviceDetails() {
+        this._oauthDeviceCode.text = '';
+        this._oauthDeviceUri.text = '';
+        this._oauthDeviceCode.visible = false;
+        this._oauthDeviceUri.visible = false;
+        this._oauthDeviceActions.visible = false;
+    }
+
+    _setOAuthDeviceDetails(device) {
+        const uri =
+            device.verification_uri_complete || device.verification_uri || '';
+        this._oauthDeviceCode.text = device.user_code || '';
+        this._oauthDeviceUri.text = uri;
+        this._oauthDeviceCode.visible = this._oauthDeviceCode.text !== '';
+        this._oauthDeviceUri.visible = this._oauthDeviceUri.text !== '';
+        this._oauthDeviceActions.visible =
+            this._oauthDeviceCode.visible || this._oauthDeviceUri.visible;
+
+        if (this._oauthDeviceCode.visible) {
+            this._oauthDeviceCode.select_region(0, -1);
+        }
+
+        return uri;
+    }
+
+    _setOAuthBusy(busy) {
+        this._oauthBusy = busy;
+        this._oauthLogin.sensitive = !busy;
+        this._oauthExchange.sensitive = !busy;
+        if (busy) {
+            this._saveBtn.sensitive = false;
+        }
+    }
+
+    _resetOAuthFlow() {
+        this._oauthTokenPayload = null;
+        this._oauthRequest = null;
+        this._oauthCode.text = '';
+        this._clearOAuthDeviceDetails();
+        this._clearOAuthStatus();
+    }
+
+    _copyText(text, toastText) {
+        if (!text) {
+            return;
+        }
+
+        this.get_clipboard().set_content(
+            Gdk.ContentProvider.new_for_value(text),
+        );
+        this._toasts.add_toast(
+            new Adw.Toast({
+                title: toastText,
+            }),
+        );
+    }
+
+    _onOAuthCopyDeviceCode() {
+        this._copyText(this._oauthDeviceCode.text, _('Device code copied'));
+    }
+
+    _onOAuthOpenDeviceUri() {
+        if (this._oauthDeviceUri.text) {
+            openOAuthURI(this._oauthDeviceUri.text);
+        }
+    }
+
     _getAccessTokenForSave() {
         if (this._getSelectedAuthMethod() === 'oauth') {
             return this._oauthTokenPayload?.access_token || '';
@@ -287,33 +406,81 @@ export default class AccountDialog extends Adw.Dialog {
 
         const authMethod = this._getSelectedAuthMethod();
         const usingOAuth = supportsOAuth && authMethod === 'oauth';
+        let config = null;
+        if (usingOAuth) {
+            try {
+                config = this._getOAuthConfig();
+            } catch (_error) {
+                config = null;
+            }
+        }
+        const usingAtproto = config?.flow === 'atproto';
 
         this._authMethod.visible = supportsOAuth;
         this._accessToken.visible = !usingOAuth;
         this._accessTokenHelp.visible = !usingOAuth;
         this._oauthStatusRow.visible = usingOAuth;
+        this._oauthStatus.visible =
+            usingOAuth && this._oauthStatus.label !== '';
+        this._oauthLoginHint.visible = usingAtproto;
         this._oauthCode.visible = usingOAuth && this._oauthRequest !== null;
+        this._oauthExchange.visible =
+            usingOAuth &&
+            this._oauthRequest !== null &&
+            config?.flow !== 'device';
+        this._oauthDeviceCode.visible =
+            usingOAuth && this._oauthDeviceCode.text !== '';
+        this._oauthDeviceUri.visible =
+            usingOAuth && this._oauthDeviceUri.text !== '';
+        this._oauthDeviceActions.visible =
+            this._oauthDeviceCode.visible || this._oauthDeviceUri.visible;
 
         if (!usingOAuth) {
+            this._clearOAuthStatus();
+            this._clearOAuthDeviceDetails();
             return;
         }
 
         if (this._oauthTokenPayload !== null) {
-            this._oauthStatusRow.subtitle = _(
-                'OAuth sign-in is ready for this account.',
-            );
+            this._oauthStatusRow.subtitle = '';
             this._oauthLogin.label = _('Sign In Again');
+            if (this._oauthStatus.label === '') {
+                this._setOAuthStatus(
+                    _('OAuth sign-in is ready. Save the account to finish.'),
+                    'success',
+                );
+            }
         } else if (this._oauthRequest !== null) {
-            this._oauthStatusRow.subtitle = _(
-                'Paste the authorization code or redirect URL, then exchange it.',
-            );
-            this._oauthLogin.label = _('Exchange');
-        } else {
-            this._oauthStatusRow.subtitle = _(
-                'Sign in with your browser to request an access token.',
-            );
+            this._oauthStatusRow.subtitle = '';
+            this._oauthLogin.label = _('Open Browser Again');
+            if (this._oauthStatus.label === '') {
+                this._setOAuthStatus(
+                    _('Paste the authorization code or redirect URL below.'),
+                    'warning',
+                );
+            }
+        } else if (usingAtproto) {
+            this._oauthStatusRow.subtitle = '';
             this._oauthLogin.label = _('Sign In');
+            if (this._oauthStatus.label === '') {
+                this._setOAuthStatus(
+                    _('Enter your AT Protocol handle or DID, then sign in.'),
+                    'muted',
+                );
+            }
+        } else {
+            this._oauthStatusRow.subtitle = '';
+            this._oauthLogin.label = _('Sign In');
+            if (this._oauthStatus.label === '') {
+                this._setOAuthStatus(
+                    _('Sign in with your browser to request an access token.'),
+                    'muted',
+                );
+            }
         }
+
+        this._oauthLogin.sensitive = !this._oauthBusy;
+        this._oauthExchange.sensitive = !this._oauthBusy;
     }
 
     /**
@@ -345,9 +512,8 @@ export default class AccountDialog extends Adw.Dialog {
         /* Token help text */
         this._accessTokenHelp.label = this._getSelectedForgeClass().tokenText;
 
-        this._oauthTokenPayload = null;
-        this._oauthRequest = null;
-        this._oauthCode.text = '';
+        this._resetOAuthFlow();
+        this._oauthLoginHint.text = '';
         this._updateAuthMethodState();
         this._onEntryChanged();
     }
@@ -399,47 +565,102 @@ export default class AccountDialog extends Adw.Dialog {
                 throw 'OAuthUnsupported';
             }
 
-            this._oauthLogin.sensitive = false;
-            this._saveBtn.sensitive = false;
+            this._setOAuthBusy(true);
 
             if (config.flow === 'device') {
-                this._oauthStatusRow.subtitle = _(
-                    'Waiting for browser authorization.',
+                this._oauthTokenPayload = null;
+                this._clearOAuthDeviceDetails();
+                this._setOAuthStatus(
+                    _('Requesting a device code from the provider.'),
+                    'info',
                 );
                 this._oauthTokenPayload = await startDeviceOAuth(
                     config,
-                    (device) => {
-                        const uri =
-                            device.verification_uri_complete ||
-                            device.verification_uri;
-                        this._oauthStatusRow.subtitle = _(
-                            'Enter the browser code shown by the provider.',
-                        );
-                        if (device.user_code) {
-                            this._oauthStatusRow.subtitle =
-                                this._oauthStatusRow.subtitle +
-                                ' ' +
-                                device.user_code;
-                        }
-                        openOAuthURI(uri);
+                    {
+                        onDeviceCode: (device) => {
+                            const uri = this._setOAuthDeviceDetails(device);
+                            const interval = Number(
+                                device.interval || config.interval || 5,
+                            );
+                            this._setOAuthStatus(
+                                _(
+                                    'Enter the device code in your browser. Cinders will check for approval every ',
+                                ) +
+                                    interval +
+                                    _(' seconds.'),
+                                'warning',
+                            );
+                            if (uri) {
+                                openOAuthURI(uri);
+                            }
+                        },
+                        onPoll: (poll) => {
+                            this._onOAuthDevicePoll(poll);
+                        },
                     },
+                );
+                this._clearOAuthDeviceDetails();
+                this._setOAuthStatus(
+                    _('OAuth sign-in completed. Save the account to finish.'),
+                    'success',
                 );
             } else if (config.flow === 'pkce') {
                 if (this._oauthRequest === null) {
+                    this._oauthTokenPayload = null;
+                    this._clearOAuthDeviceDetails();
                     this._oauthRequest = createPkceRequest(config);
                     this._oauthCode.text = '';
+                    this._setOAuthStatus(
+                        _(
+                            'Browser sign-in opened. Paste the final redirect URL or authorization code below.',
+                        ),
+                        'warning',
+                    );
                     this._updateAuthMethodState();
                     openOAuthURI(this._oauthRequest.authorizationUrl);
                     return;
                 }
 
-                this._oauthTokenPayload = await exchangeAuthorizationCode(
-                    config,
-                    this._oauthRequest,
-                    this._oauthCode.text,
+                this._setOAuthStatus(
+                    _(
+                        'Browser sign-in is already in progress. Paste the redirect URL below, or reopen the browser.',
+                    ),
+                    'warning',
                 );
-                this._oauthRequest = null;
-                this._oauthCode.text = '';
+                openOAuthURI(this._oauthRequest.authorizationUrl);
+                return;
+            } else if (config.flow === 'atproto') {
+                if (this._oauthRequest === null) {
+                    this._oauthTokenPayload = null;
+                    this._clearOAuthDeviceDetails();
+                    this._setOAuthStatus(
+                        _('Resolving your AT Protocol account.'),
+                        'info',
+                    );
+                    this._oauthRequest = await startAtprotoOAuth(
+                        config,
+                        this._getOAuthLoginHint(),
+                    );
+                    this._oauthCode.text = '';
+                    this._setOAuthStatus(
+                        _(
+                            'Browser sign-in opened. Paste the final redirect URL or authorization code below.',
+                        ),
+                        'warning',
+                    );
+                    this._updateAuthMethodState();
+                    openOAuthURI(this._oauthRequest.authorizationUrl);
+                    return;
+                }
+
+                this._setOAuthStatus(
+                    _(
+                        'Browser sign-in is already in progress. Paste the redirect URL below, or reopen the browser.',
+                    ),
+                    'warning',
+                );
+                openOAuthURI(this._oauthRequest.authorizationUrl);
+                return;
             } else {
                 throw 'OAuthUnsupported';
             }
@@ -447,13 +668,104 @@ export default class AccountDialog extends Adw.Dialog {
             this._accessToken.text = this._oauthTokenPayload.access_token;
         } catch (error) {
             console.error(error);
+            this._setOAuthStatus(this._errorText(error), 'error');
             this._toasts.add_toast(
                 new Adw.Toast({
                     title: this._errorText(error),
                 }),
             );
         } finally {
-            this._oauthLogin.sensitive = true;
+            this._setOAuthBusy(false);
+            this._updateAuthMethodState();
+            this._onEntryChanged();
+        }
+    }
+
+    _onOAuthDevicePoll(poll) {
+        switch (poll.state) {
+            case 'waiting':
+                this._setOAuthStatus(
+                    _('Waiting for browser approval. Next check in ') +
+                        poll.interval +
+                        _(' seconds.'),
+                    'warning',
+                );
+                break;
+            case 'checking':
+                this._setOAuthStatus(
+                    _('Checking provider for approval, attempt ') +
+                        poll.attempt +
+                        '.',
+                    'info',
+                );
+                break;
+            case 'pending':
+                this._setOAuthStatus(
+                    _('Still waiting for approval. Keep the browser page open.'),
+                    'warning',
+                );
+                break;
+            case 'slow_down':
+                this._setOAuthStatus(
+                    _('Provider asked Cinders to slow down. Next check in ') +
+                        poll.interval +
+                        _(' seconds.'),
+                    'warning',
+                );
+                break;
+            case 'authorized':
+                this._setOAuthStatus(
+                    _('Provider approved the sign-in. Finishing setup.'),
+                    'success',
+                );
+                break;
+        }
+    }
+
+    async _onOAuthExchange() {
+        try {
+            const config = this._getOAuthConfig();
+            if (config === null || this._oauthRequest === null) {
+                throw 'OAuthUnsupported';
+            }
+
+            this._setOAuthBusy(true);
+            this._setOAuthStatus(_('Exchanging authorization code.'), 'info');
+
+            if (config.flow === 'pkce') {
+                this._oauthTokenPayload = await exchangeAuthorizationCode(
+                    config,
+                    this._oauthRequest,
+                    this._oauthCode.text,
+                );
+            } else if (config.flow === 'atproto') {
+                this._oauthTokenPayload =
+                    await exchangeAtprotoAuthorizationCode(
+                        config,
+                        this._oauthRequest,
+                        this._oauthCode.text,
+                    );
+            } else {
+                throw 'OAuthUnsupported';
+            }
+
+            this._oauthRequest = null;
+            this._oauthCode.text = '';
+            this._accessToken.text = this._oauthTokenPayload.access_token;
+            this._setOAuthStatus(
+                _('OAuth sign-in completed. Save the account to finish.'),
+                'success',
+            );
+        } catch (error) {
+            console.error(error);
+            this._setOAuthStatus(this._errorText(error), 'error');
+            this._toasts.add_toast(
+                new Adw.Toast({
+                    title: this._errorText(error),
+                }),
+            );
+        } finally {
+            this._setOAuthBusy(false);
             this._updateAuthMethodState();
             this._onEntryChanged();
         }
@@ -466,6 +778,11 @@ export default class AccountDialog extends Adw.Dialog {
      * Updates save button sensitivity after validating the values.
      */
     _onEntryChanged() {
+        if (this._oauthBusy) {
+            this._saveBtn.sensitive = false;
+            return;
+        }
+
         let valid = false;
         const filtersValid = this._filtersValid();
         const authMethod = this._getSelectedAuthMethod();
@@ -538,7 +855,13 @@ export default class AccountDialog extends Adw.Dialog {
      * @returns {string} The error text
      */
     _errorText(error) {
-        switch (error) {
+        const isObject = typeof error === 'object' && error !== null;
+        const code = isObject
+            ? error.code || error.name || error.message
+            : error;
+        const detail = isObject ? error.detail || error.message || '' : '';
+
+        switch (code) {
             case 'FailedForgeAuth':
                 return _('Couldn’t authenticate the account');
             case 'FailedTokenScopes':
@@ -547,12 +870,23 @@ export default class AccountDialog extends Adw.Dialog {
                 return _('The OAuth authorization expired');
             case 'OAuthMissingCode':
                 return _('Paste the authorization code or redirect URL');
+            case 'OAuthMissingLoginHint':
+                return _('Enter an AT Protocol handle or DID');
+            case 'OAuthHandleResolutionFailed':
+                return _('Couldn’t resolve that AT Protocol handle or DID');
+            case 'OAuthIssuerMismatch':
+                return _('The OAuth issuer did not match the account');
             case 'OAuthStateMismatch':
                 return _('The OAuth response did not match this request');
             case 'OAuthUnsupported':
                 return _('This forge does not support OAuth login yet');
+            case 'InvalidRequest':
+            case 'invalid_request':
+                return detail || _('The OAuth provider rejected the request');
+            case 'OAuthUnexpected':
+                return detail || _('Unexpected error when creating the account');
             default:
-                return _('Unexpected error when creating the account');
+                return detail || _('Unexpected error when creating the account');
         }
     }
 
@@ -607,6 +941,7 @@ export default class AccountDialog extends Adw.Dialog {
                 '',
                 [],
                 authMethod,
+                secret,
             );
             /* Try authenticating the user with access token */
             const [userId, username] = await forge.getUser();
@@ -695,6 +1030,7 @@ export default class AccountDialog extends Adw.Dialog {
                     '',
                     [],
                     authMethod,
+                    newSecret,
                 );
                 const [userId, username] = await forge.getUser();
 

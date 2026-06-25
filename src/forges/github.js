@@ -30,7 +30,7 @@ export default class GitHub extends Forge {
         return {
             provider: this.name,
             flow: 'device',
-            clientId: 'FORGE_SPARKS_GITHUB_CLIENT_ID',
+            clientId: 'Ov23lijMTchHO2KwEoJn',
             scopes: [...this.scopes, 'repo'],
             deviceCodeUrl: `https://${host}/login/device/code`,
             tokenUrl: `https://${host}/login/oauth/access_token`,
@@ -66,7 +66,7 @@ export default class GitHub extends Forge {
     async getUser() {
         try {
             const url = this.buildURI('user');
-            const message = super.createMessage('GET', url);
+            const message = await this.createMessage('GET', url);
             const bytes = await session.send_and_read_async(
                 message,
                 GLib.PRIORITY_DEFAULT,
@@ -86,7 +86,7 @@ export default class GitHub extends Forge {
 
             /* Test notifications capabilities */
             const urlNotify = this.buildURI('notifications');
-            const messageNotify = super.createMessage('GET', urlNotify);
+            const messageNotify = await this.createMessage('GET', urlNotify);
             await session.send_and_read_async(
                 messageNotify,
                 GLib.PRIORITY_DEFAULT,
@@ -106,7 +106,7 @@ export default class GitHub extends Forge {
     async getNotifications() {
         try {
             const url = this.buildURI('notifications');
-            const message = super.createMessage('GET', url);
+            const message = await this.createMessage('GET', url);
             /* headers={'If-Modified-Since': this.modifiedSince} */
 
             const bytes = await session.send_and_read_async(
@@ -171,7 +171,7 @@ export default class GitHub extends Forge {
         try {
             if (id !== null) {
                 const url = this.buildURI(`/notifications/threads/${id}`);
-                const message = super.createMessage('PATCH', url);
+                const message = await this.createMessage('PATCH', url);
                 await session.send_and_read_async(
                     message,
                     GLib.PRIORITY_DEFAULT,
@@ -183,7 +183,7 @@ export default class GitHub extends Forge {
             } else {
                 const now = GLib.DateTime.new_now_utc();
                 const url = this.buildURI('notifications');
-                const message = super.createMessage('PUT', url, {
+                const message = await this.createMessage('PUT', url, {
                     last_read_at: now.format_iso8601(),
                     read: true,
                 });
@@ -247,7 +247,7 @@ export default class GitHub extends Forge {
 
         /* Request the notification subject info from API  */
         try {
-            const message = super.createMessage(
+            const message = await this.createMessage(
                 'GET',
                 notification.subject.url,
             );
@@ -333,7 +333,7 @@ export default class GitHub extends Forge {
         if (!url || url === null) return;
 
         try {
-            const message = super.createMessage('GET', url);
+            const message = await this.createMessage('GET', url);
             const bytes = await session.send_and_read_async(
                 message,
                 GLib.PRIORITY_DEFAULT,

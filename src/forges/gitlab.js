@@ -4,8 +4,12 @@ import GLib from 'gi://GLib';
 import { gettext as _ } from 'gettext';
 
 import Forge from './forge.js';
+import AccountsManager from '../model/accountsManager.js';
 import Notification from '../model/notification.js';
+import { refreshOAuthToken, tokenExpiresSoon } from '../oauth.js';
 import { session } from './../util.js';
+
+const accounts = new AccountsManager();
 
 export default class GitLab extends Forge {
     static name = 'gitlab';
@@ -24,7 +28,7 @@ export default class GitLab extends Forge {
         return {
             provider: this.name,
             flow: 'device',
-            clientId: 'FORGE_SPARKS_GITLAB_CLIENT_ID',
+            clientId: 'bbd8c2c83a48df0b29891c5f0211de5e3284f257509079c7f0c835d23a54e1f2',
             scopes: this.scopes,
             deviceCodeUrl: `https://${url}/oauth/authorize_device`,
             tokenUrl: `https://${url}/oauth/token`,
@@ -49,10 +53,40 @@ export default class GitLab extends Forge {
         return 'Bearer ' + this.token;
     }
 
+    async _refreshOAuthTokenIfNeeded() {
+        if (
+            this.authMethod !== 'oauth' ||
+            !this.tokenPayload?.refresh_token ||
+            !tokenExpiresSoon(this.tokenPayload)
+        ) {
+            return;
+        }
+
+        const refreshed = await refreshOAuthToken(
+            GitLab.oauthConfig(this.url),
+            this.tokenPayload,
+        );
+        this.tokenPayload = refreshed;
+        this.token = refreshed.access_token;
+
+        if (this.account !== null) {
+            await accounts.updateAccountSecret(
+                this.account,
+                this.url,
+                refreshed,
+            );
+        }
+    }
+
+    async createMessage(method, url, data = null, headers = {}) {
+        await this._refreshOAuthTokenIfNeeded();
+        return super.createMessage(method, url, data, headers);
+    }
+
     async getUser() {
         try {
             const url = this.buildURI('user');
-            const message = super.createMessage('GET', url);
+            const message = await this.createMessage('GET', url);
             const bytes = await session.send_and_read_async(
                 message,
                 GLib.PRIORITY_DEFAULT,
@@ -79,7 +113,7 @@ export default class GitLab extends Forge {
     async getNotifications() {
         try {
             const url = this.buildURI('todos');
-            const message = super.createMessage('GET', url);
+            const message = await this.createMessage('GET', url);
             const bytes = await session.send_and_read_async(
                 message,
                 GLib.PRIORITY_DEFAULT,
@@ -137,7 +171,7 @@ export default class GitLab extends Forge {
         try {
             if (id !== null) {
                 const url = this.buildURI(`todos/${id}/mark_as_done`);
-                const message = super.createMessage('POST', url);
+                const message = await this.createMessage('POST', url);
                 await session.send_and_read_async(
                     message,
                     GLib.PRIORITY_DEFAULT,
@@ -148,7 +182,7 @@ export default class GitLab extends Forge {
                 return message.get_status() === 200;
             } else {
                 const url = this.buildURI('todos/mark_as_done');
-                const message = super.createMessage('POST', url);
+                const message = await this.createMessage('POST', url);
                 await session.send_and_read_async(
                     message,
                     GLib.PRIORITY_DEFAULT,
