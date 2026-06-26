@@ -1,6 +1,6 @@
 project(
   'cinders',
-  version: '1.0.1',
+  version: '1.0.0',
   meson_version: '>= 0.63.0',
   license: 'MIT',
 )

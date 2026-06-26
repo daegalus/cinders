@@ -12,6 +12,7 @@ BUNDLE="${BUNDLE:-${OUTPUT_DIR}/${APP_ID}.flatpak}"
 REMOTE_NAME="${REMOTE_NAME:-cinders}"
 BASE_URL="${BASE_URL:-https://daegalus.github.io/cinders/flatpak}"
 HOMEPAGE="${HOMEPAGE:-https://yulian.dev/cinders}"
+RUNTIME_REMOTE="${RUNTIME_REMOTE:-flathub}"
 RUNTIME_REPO="${RUNTIME_REPO:-https://flathub.org/repo/flathub.flatpakrepo}"
 ICON_URL="${ICON_URL:-${BASE_URL%/}/${APP_ID}.svg}"
 GPG_KEY_ID="${GPG_KEY_ID:-}"
@@ -56,12 +57,13 @@ if [ -z "$GPG_KEY_BASE64" ] && [ -n "$GPG_KEY_FILE" ]; then
 fi
 
 if [ "$SETUP_FLATHUB" = "1" ]; then
-    flatpak remote-add --user --if-not-exists flathub "$RUNTIME_REPO"
+    flatpak remote-add --user --if-not-exists "$RUNTIME_REMOTE" "$RUNTIME_REPO"
 fi
 
 sign_args=()
 bundle_key_args=()
 download_args=()
+dependency_args=()
 if [ -n "$GPG_KEY_ID" ]; then
     sign_args=(--gpg-sign="$GPG_KEY_ID")
 fi
@@ -70,6 +72,8 @@ if [ -n "$GPG_KEY_FILE" ]; then
 fi
 if [ "$DISABLE_DOWNLOAD" = "1" ]; then
     download_args=(--disable-download)
+else
+    dependency_args=(--user --install-deps-from="$RUNTIME_REMOTE" -y)
 fi
 
 flatpak-builder \
@@ -78,6 +82,7 @@ flatpak-builder \
     --repo="$REPO_DIR" \
     --default-branch="$BRANCH" \
     "${download_args[@]}" \
+    "${dependency_args[@]}" \
     "${sign_args[@]}" \
     "$BUILD_DIR" \
     "$MANIFEST"
