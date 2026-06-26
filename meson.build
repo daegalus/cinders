@@ -37,6 +37,7 @@ subdir('po')
 install_data(
   'LICENSE',
   'LICENSE_MANIFESTO',
+  'MANIFESTO.md',
   'NOTICE.md',
   'LICENSES/MIT-Forge-Sparks.txt',
   install_dir: datadir / 'licenses' / application_id,
