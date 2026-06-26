@@ -12,6 +12,7 @@ import {
     exchangeAuthorizationCode,
     openOAuthURI,
     startDeviceOAuth,
+    startOAuthLoopbackCallback,
 } from '../oauth.js';
 import {
     exchangeAtprotoAuthorizationCode,
@@ -84,6 +85,7 @@ export default class AccountDialog extends Adw.Dialog {
         this._savedAuthMethod = 'token';
         this._oauthTokenPayload = null;
         this._oauthRequest = null;
+        this._oauthLoopback = null;
         this._oauthBusy = false;
 
         this.connect('notify::editing', this._onEditing.bind(this));
@@ -350,11 +352,81 @@ export default class AccountDialog extends Adw.Dialog {
     }
 
     _resetOAuthFlow() {
+        this._stopOAuthLoopback();
         this._oauthTokenPayload = null;
         this._oauthRequest = null;
         this._oauthCode.text = '';
         this._clearOAuthDeviceDetails();
         this._clearOAuthStatus();
+    }
+
+    _stopOAuthLoopback() {
+        if (this._oauthLoopback === null) {
+            return;
+        }
+
+        const loopback = this._oauthLoopback;
+        this._oauthLoopback = null;
+        loopback.promise.catch(() => {});
+        loopback.stop();
+    }
+
+    async _waitForOAuthLoopback(config, request, loopback) {
+        try {
+            const callbackUri = await loopback.promise;
+            if (this._oauthRequest !== request) {
+                return;
+            }
+
+            this._oauthCode.text = callbackUri;
+            this._setOAuthBusy(true);
+            this._setOAuthStatus(
+                _('Authorization received. Finishing sign-in.'),
+                'info',
+            );
+            if (config.flow === 'pkce') {
+                this._oauthTokenPayload = await exchangeAuthorizationCode(
+                    config,
+                    request,
+                    callbackUri,
+                );
+            } else if (config.flow === 'atproto') {
+                this._oauthTokenPayload =
+                    await exchangeAtprotoAuthorizationCode(
+                        config,
+                        request,
+                        callbackUri,
+                    );
+            } else {
+                throw 'OAuthUnsupported';
+            }
+            this._oauthRequest = null;
+            this._oauthCode.text = '';
+            this._accessToken.text = this._oauthTokenPayload.access_token;
+            this._setOAuthStatus(
+                _('OAuth sign-in completed. Save the account to finish.'),
+                'success',
+            );
+        } catch (error) {
+            if (error === 'OAuthCallbackStopped') {
+                return;
+            }
+
+            console.error(error);
+            this._setOAuthStatus(this._errorText(error), 'error');
+            this._toasts.add_toast(
+                new Adw.Toast({
+                    title: this._errorText(error),
+                }),
+            );
+        } finally {
+            if (this._oauthLoopback === loopback) {
+                this._oauthLoopback = null;
+            }
+            this._setOAuthBusy(false);
+            this._updateAuthMethodState();
+            this._onEntryChanged();
+        }
     }
 
     _copyText(text, toastText) {
@@ -608,15 +680,27 @@ export default class AccountDialog extends Adw.Dialog {
                 if (this._oauthRequest === null) {
                     this._oauthTokenPayload = null;
                     this._clearOAuthDeviceDetails();
-                    this._oauthRequest = createPkceRequest(config);
+                    this._stopOAuthLoopback();
+                    const loopback = startOAuthLoopbackCallback();
+                    const callbackConfig = {
+                        ...config,
+                        redirectUri: loopback.redirectUri,
+                    };
+                    this._oauthLoopback = loopback;
+                    this._oauthRequest = createPkceRequest(callbackConfig);
                     this._oauthCode.text = '';
                     this._setOAuthStatus(
                         _(
-                            'Browser sign-in opened. Paste the final redirect URL or authorization code below.',
+                            'Browser sign-in opened. Waiting for the local redirect. You can paste the final redirect URL below if it does not return automatically.',
                         ),
                         'warning',
                     );
                     this._updateAuthMethodState();
+                    this._waitForOAuthLoopback(
+                        callbackConfig,
+                        this._oauthRequest,
+                        loopback,
+                    );
                     openOAuthURI(this._oauthRequest.authorizationUrl);
                     return;
                 }
@@ -633,22 +717,75 @@ export default class AccountDialog extends Adw.Dialog {
                 if (this._oauthRequest === null) {
                     this._oauthTokenPayload = null;
                     this._clearOAuthDeviceDetails();
+                    this._stopOAuthLoopback();
                     this._setOAuthStatus(
                         _('Resolving your AT Protocol account.'),
                         'info',
                     );
-                    this._oauthRequest = await startAtprotoOAuth(
-                        config,
-                        this._getOAuthLoginHint(),
-                    );
+                    let loopback = null;
+                    let callbackConfig = config;
+
+                    try {
+                        loopback = startOAuthLoopbackCallback({
+                            allowPortFallback: false,
+                        });
+                        callbackConfig = {
+                            ...config,
+                            redirectUri: loopback.redirectUri,
+                        };
+                        this._oauthLoopback = loopback;
+                    } catch (error) {
+                        console.error(error);
+                    }
+
+                    try {
+                        this._oauthRequest = await startAtprotoOAuth(
+                            callbackConfig,
+                            this._getOAuthLoginHint(),
+                        );
+                    } catch (error) {
+                        if (loopback === null) {
+                            throw error;
+                        }
+
+                        this._stopOAuthLoopback();
+                        loopback = null;
+                        callbackConfig = config;
+                        this._setOAuthStatus(
+                            _(
+                                'Local redirect was not accepted. Falling back to the hosted callback.',
+                            ),
+                            'warning',
+                        );
+                        this._oauthRequest = await startAtprotoOAuth(
+                            callbackConfig,
+                            this._getOAuthLoginHint(),
+                        );
+                    }
                     this._oauthCode.text = '';
-                    this._setOAuthStatus(
-                        _(
-                            'Browser sign-in opened. Paste the final redirect URL or authorization code below.',
-                        ),
-                        'warning',
-                    );
+                    if (loopback !== null) {
+                        this._setOAuthStatus(
+                            _(
+                                'Browser sign-in opened. Waiting for the local redirect. You can paste the final redirect URL below if it does not return automatically.',
+                            ),
+                            'warning',
+                        );
+                    } else {
+                        this._setOAuthStatus(
+                            _(
+                                'Browser sign-in opened. Paste the final redirect URL or authorization code below.',
+                            ),
+                            'warning',
+                        );
+                    }
                     this._updateAuthMethodState();
+                    if (loopback !== null) {
+                        this._waitForOAuthLoopback(
+                            callbackConfig,
+                            this._oauthRequest,
+                            loopback,
+                        );
+                    }
                     openOAuthURI(this._oauthRequest.authorizationUrl);
                     return;
                 }
@@ -668,6 +805,7 @@ export default class AccountDialog extends Adw.Dialog {
             this._accessToken.text = this._oauthTokenPayload.access_token;
         } catch (error) {
             console.error(error);
+            this._stopOAuthLoopback();
             this._setOAuthStatus(this._errorText(error), 'error');
             this._toasts.add_toast(
                 new Adw.Toast({
@@ -750,6 +888,7 @@ export default class AccountDialog extends Adw.Dialog {
             }
 
             this._oauthRequest = null;
+            this._stopOAuthLoopback();
             this._oauthCode.text = '';
             this._accessToken.text = this._oauthTokenPayload.access_token;
             this._setOAuthStatus(
@@ -894,6 +1033,7 @@ export default class AccountDialog extends Adw.Dialog {
      * Callback when the user clicks the cancel button.
      */
     _onCancel() {
+        this._resetOAuthFlow();
         this.close();
     }
 

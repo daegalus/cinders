@@ -15,7 +15,7 @@
       <default>false</default>
     </key>
     <key name="window-size" type="ai">
-      <default>[780, 480]</default>
+      <default>[1040, 640]</default>
     </key>
     <key type="as" name="accounts">
       <default>[]</default>

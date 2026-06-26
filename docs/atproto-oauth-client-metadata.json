@@ -2,7 +2,10 @@
   "client_id": "https://yulian.dev/cinders/atproto-oauth-client-metadata.json",
   "client_name": "Cinders",
   "client_uri": "https://yulian.dev/cinders",
-  "redirect_uris": ["https://yulian.dev/cinders/oauth/callback"],
+  "redirect_uris": [
+    "https://yulian.dev/cinders/oauth/callback",
+    "http://127.0.0.1:15713/oauth/callback"
+  ],
   "scope": "atproto",
   "grant_types": ["authorization_code", "refresh_token"],
   "response_types": ["code"],

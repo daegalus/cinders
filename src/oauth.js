@@ -7,9 +7,15 @@ import Soup from 'gi://Soup';
 import { session } from './util.js';
 
 const DEVICE_GRANT = 'urn:ietf:params:oauth:grant-type:device_code';
+const LOOPBACK_HOST = '127.0.0.1';
+const LOOPBACK_PATH = '/oauth/callback';
+const LOOPBACK_PORT = 15713;
+const LOOPBACK_TIMEOUT_SECONDS = 300;
 
 const encoder = new TextEncoder();
 const decoder = new TextDecoder('utf-8');
+
+export const DEFAULT_LOOPBACK_REDIRECT_URI = `http://${LOOPBACK_HOST}:${LOOPBACK_PORT}${LOOPBACK_PATH}`;
 
 function encodeFormComponent(value) {
     return GLib.uri_escape_string(String(value), null, false).replaceAll(
@@ -48,6 +54,185 @@ function buildURL(url, params) {
     const separator = url.includes('?') ? '&' : '?';
     const query = encodeForm(params);
     return query ? `${url}${separator}${query}` : url;
+}
+
+function escapeHTML(value) {
+    return String(value)
+        .replaceAll('&', '&amp;')
+        .replaceAll('<', '&lt;')
+        .replaceAll('>', '&gt;')
+        .replaceAll('"', '&quot;')
+        .replaceAll("'", '&#39;');
+}
+
+function writeCallbackResponse(message, title, description, error = false) {
+    const body = `<!doctype html>
+<html>
+  <head>
+    <meta charset="utf-8">
+    <title>${escapeHTML(title)}</title>
+    <style>
+      :root {
+        color-scheme: light dark;
+        font-family: system-ui, sans-serif;
+      }
+      body {
+        display: grid;
+        min-height: 100vh;
+        margin: 0;
+        place-items: center;
+      }
+      main {
+        max-width: 36rem;
+        padding: 2rem;
+      }
+      h1 {
+        font-size: 1.5rem;
+        margin: 0 0 0.75rem;
+      }
+      p {
+        line-height: 1.5;
+        margin: 0;
+      }
+    </style>
+  </head>
+  <body>
+    <main>
+      <h1>${escapeHTML(title)}</h1>
+      <p>${escapeHTML(description)}</p>
+    </main>
+  </body>
+</html>`;
+    message.get_response_headers().set_content_type('text/html', null);
+    message.get_response_body().append(body);
+    message.set_status(error ? 400 : 200, null);
+}
+
+function loopbackRedirectUriFromServer(server) {
+    const uris = server.get_uris();
+    if (uris.length === 0) {
+        return DEFAULT_LOOPBACK_REDIRECT_URI;
+    }
+
+    const port = uris[0].get_port();
+    return `http://${LOOPBACK_HOST}:${port}${LOOPBACK_PATH}`;
+}
+
+export function startOAuthLoopbackCallback({
+    port = LOOPBACK_PORT,
+    timeoutSeconds = LOOPBACK_TIMEOUT_SECONDS,
+    allowPortFallback = true,
+} = {}) {
+    const server = new Soup.Server();
+    let settled = false;
+    let timeoutId = 0;
+    let resolveCallback;
+    let rejectCallback;
+
+    const promise = new Promise((resolve, reject) => {
+        resolveCallback = resolve;
+        rejectCallback = reject;
+    });
+
+    const cleanup = () => {
+        if (timeoutId !== 0) {
+            GLib.Source.remove(timeoutId);
+            timeoutId = 0;
+        }
+
+        try {
+            server.disconnect();
+        } catch (_error) {
+            // The server may already be disconnected after a terminal callback.
+        }
+    };
+
+    const settle = (callback, value) => {
+        if (settled) {
+            return;
+        }
+
+        settled = true;
+        if (timeoutId !== 0) {
+            GLib.Source.remove(timeoutId);
+            timeoutId = 0;
+        }
+        GLib.idle_add(GLib.PRIORITY_DEFAULT_IDLE, () => {
+            cleanup();
+            return GLib.SOURCE_REMOVE;
+        });
+        callback(value);
+    };
+
+    let redirectUri = DEFAULT_LOOPBACK_REDIRECT_URI;
+
+    server.add_handler(LOOPBACK_PATH, (_server, message) => {
+        const query = message.get_uri().get_query() || '';
+        const callbackUri = query ? `${redirectUri}?${query}` : redirectUri;
+        const params = decodeForm(query);
+
+        if (params.error) {
+            writeCallbackResponse(
+                message,
+                'Cinders received an OAuth error',
+                'Return to Cinders for details.',
+                true,
+            );
+            settle(rejectCallback, {
+                code: params.error,
+                detail: params.error_description || params.error,
+            });
+            return;
+        }
+
+        writeCallbackResponse(
+            message,
+            'Cinders received the authorization response',
+            'You can return to Cinders to finish signing in.',
+        );
+        settle(resolveCallback, callbackUri);
+    });
+
+    try {
+        server.listen(
+            Gio.InetSocketAddress.new_from_string(LOOPBACK_HOST, port),
+            null,
+        );
+    } catch (_error) {
+        if (!allowPortFallback) {
+            cleanup();
+            throw _error;
+        }
+
+        try {
+            server.listen(
+                Gio.InetSocketAddress.new_from_string(LOOPBACK_HOST, 0),
+                null,
+            );
+        } catch (fallbackError) {
+            cleanup();
+            throw fallbackError;
+        }
+    }
+
+    redirectUri = loopbackRedirectUriFromServer(server);
+    timeoutId = GLib.timeout_add_seconds(
+        GLib.PRIORITY_DEFAULT,
+        timeoutSeconds,
+        () => {
+            timeoutId = 0;
+            settle(rejectCallback, 'OAuthExpired');
+            return GLib.SOURCE_REMOVE;
+        },
+    );
+
+    return {
+        redirectUri,
+        promise,
+        stop() {
+            settle(rejectCallback, 'OAuthCallbackStopped');
+        },
+    };
 }
 
 function waitSeconds(seconds) {
@@ -283,6 +468,7 @@ export function createPkceRequest(config) {
 
     return {
         authorizationUrl: authorizationUrl,
+        redirectUri: config.redirectUri,
         verifier: verifier,
         state: state,
     };
@@ -327,7 +513,7 @@ export async function exchangeAuthorizationCode(config, request, codeOrUrl) {
         client_secret: config.clientSecret,
         grant_type: 'authorization_code',
         code: params.code,
-        redirect_uri: config.redirectUri,
+        redirect_uri: request.redirectUri || config.redirectUri,
         code_verifier: request.verifier,
     });
 

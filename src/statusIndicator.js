@@ -22,6 +22,7 @@ export default class StatusIndicator {
         this._indicator = null;
         this._actions = null;
         this._menu = null;
+        this._activateHandler = 0;
         this._count = 0;
     }
 
@@ -45,7 +46,9 @@ export default class StatusIndicator {
             this._indicator.set_status(
                 this._Ayatana.IndicatorStatus.ACTIVE,
             );
-            this._indicator.set_secondary_activate_target('show');
+            this._activateHandler = this._indicator.connect('activate', () => {
+                this._showWindow();
+            });
             this._indicator.set_menu(this._menu);
             this._indicator.set_actions(this._actions);
             this.updateCount(this._count);
@@ -58,6 +61,11 @@ export default class StatusIndicator {
     }
 
     destroy() {
+        if (this._indicator !== null && this._activateHandler !== 0) {
+            this._indicator.disconnect(this._activateHandler);
+            this._activateHandler = 0;
+        }
+
         if (this._indicator !== null && this._Ayatana !== null) {
             this._indicator.set_status(
                 this._Ayatana.IndicatorStatus.PASSIVE,
@@ -67,6 +75,7 @@ export default class StatusIndicator {
         this._indicator = null;
         this._actions = null;
         this._menu = null;
+        this._activateHandler = 0;
     }
 
     updateCount(count) {
@@ -86,21 +95,11 @@ export default class StatusIndicator {
 
     _buildActions() {
         this._addAction('show', () => {
-            this._application.activate();
+            this._showWindow();
         });
 
         this._addAction('reload', () => {
             this._application.reload();
-        });
-
-        this._addAction('accounts', () => {
-            this._application.activate();
-            this._application.lookup_action('accounts').activate(null);
-        });
-
-        this._addAction('preferences', () => {
-            this._application.activate();
-            this._application.lookup_action('preferences').activate(null);
         });
 
         this._addAction('quit', () => {
@@ -109,11 +108,13 @@ export default class StatusIndicator {
     }
 
     _buildMenu() {
-        this._menu.append(_('Show Cinders'), 'indicator.show');
-        this._menu.append(_('Refresh'), 'indicator.reload');
-        this._menu.append(_('Accounts'), 'indicator.accounts');
-        this._menu.append(_('Preferences'), 'indicator.preferences');
-        this._menu.append(_('Quit'), 'indicator.quit');
+        this._menu.append(_('Show Cinders'), 'show');
+        this._menu.append(_('Refresh'), 'reload');
+        this._menu.append(_('Quit'), 'quit');
+    }
+
+    _showWindow() {
+        this._application.activate();
     }
 
     _addAction(name, callback) {

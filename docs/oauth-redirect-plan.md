@@ -95,23 +95,25 @@ Use provider-configurable redirect support.
 
 ### Tangled / AT Protocol
 
-Keep the hosted callback until client metadata is updated.
+Use the fixed loopback callback first, with the hosted callback as fallback.
 
 - Current metadata uses:
 
 ```text
 https://yulian.dev/cinders/oauth/callback
+http://127.0.0.1:15713/oauth/callback
 ```
 
-- To support loopback or custom schemes, add those redirect URIs to the hosted AT Protocol client metadata first.
-- Candidate future redirects:
+- If port `15713` is unavailable, fall back to the hosted callback because
+  AT Protocol requires exact redirect URIs in client metadata.
+- Candidate future custom-scheme redirect:
 
 ```text
-http://127.0.0.1:15713/oauth/callback
 dev.yulian.cinders://oauth/tangled/callback
 ```
 
-- After metadata changes are hosted and verified, Cinders can choose the best redirect at runtime.
+- Custom-scheme support requires adding that URI to the hosted AT Protocol
+  client metadata first.
 
 ## Implementation Tasks
 
@@ -133,5 +135,5 @@ dev.yulian.cinders://oauth/tangled/callback
 - Install the local Flatpak and verify desktop URI registration.
 - Test Codeberg OAuth using loopback callback.
 - Test one self-hosted Forgejo or Gitea instance using loopback callback.
-- Re-test Tangled after hosted metadata includes any new redirect URI.
+- Re-test Tangled after hosted metadata includes the loopback redirect URI.
 - Verify each flow shuts down its temporary listener after completion or cancellation.

@@ -63,6 +63,15 @@ template $Gjs_AccountDialog : Adw.Dialog {
             notify::selected => $_onAuthMethodChanged();
           }
 
+          Adw.EntryRow oauthLoginHint {
+            title: _("AT Protocol Handle or DID");
+            visible: false;
+            show-apply-button: false;
+            input-purpose: free_form;
+
+            notify::text => $_onEntryChanged();
+          }
+
           Adw.ActionRow oauthStatusRow {
             title: _("OAuth");
             visible: false;
@@ -151,15 +160,6 @@ template $Gjs_AccountDialog : Adw.Dialog {
                 }
               }
             }
-          }
-
-          Adw.EntryRow oauthLoginHint {
-            title: _("AT Protocol Handle or DID");
-            visible: false;
-            show-apply-button: false;
-            input-purpose: free_form;
-
-            notify::text => $_onEntryChanged();
           }
 
           Adw.EntryRow oauthCode {

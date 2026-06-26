@@ -6,7 +6,11 @@ import { gettext as _ } from 'gettext';
 import Forge from './forge.js';
 import GitHub from './github.js';
 import AccountsManager from '../model/accountsManager.js';
-import { refreshOAuthToken, tokenExpiresSoon } from '../oauth.js';
+import {
+    DEFAULT_LOOPBACK_REDIRECT_URI,
+    refreshOAuthToken,
+    tokenExpiresSoon,
+} from '../oauth.js';
 import { session } from './../util.js';
 
 const accounts = new AccountsManager();
@@ -38,7 +42,7 @@ export default class Gitea extends GitHub {
             scopes: this.scopes,
             authorizeUrl: `https://${url}/login/oauth/authorize`,
             tokenUrl: `https://${url}/login/oauth/access_token`,
-            redirectUri: 'http://127.0.0.1/oauth/callback',
+            redirectUri: DEFAULT_LOOPBACK_REDIRECT_URI,
             codeChallengeMethod: 'plain',
         };
     }
