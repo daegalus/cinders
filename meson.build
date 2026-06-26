@@ -2,7 +2,7 @@ project(
   'cinders',
   version: '1.0.0',
   meson_version: '>= 0.63.0',
-  license: 'MIT',
+  license: 'BlueOak-1.0.0',
 )
 
 if get_option('profile') == 'development'
@@ -33,6 +33,14 @@ i18n = import('i18n')
 subdir('data')
 subdir('src')
 subdir('po')
+
+install_data(
+  'LICENSE',
+  'LICENSE_MANIFESTO',
+  'NOTICE.md',
+  'LICENSES/MIT-Forge-Sparks.txt',
+  install_dir: datadir / 'licenses' / application_id,
+)
 
 install_symlink(
   meson.project_name(),

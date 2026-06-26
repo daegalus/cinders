@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BlueOak-1.0.0
 
 import Gio from 'gi://Gio';
 import GLib from 'gi://GLib';

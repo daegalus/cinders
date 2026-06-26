@@ -58,6 +58,12 @@ sudo ninja -C builddir install
 ## Translations
 Cinders inherits translations from Forge Sparks. Newly renamed strings may need translation updates.
 
+## License
+Cinders is licensed under the [Blue Oak Model License 1.0.0](LICENSE).
+It is based on Forge Sparks, whose original MIT notice is preserved in
+[LICENSES/MIT-Forge-Sparks.txt](LICENSES/MIT-Forge-Sparks.txt). The upstream
+license manifesto is preserved in [LICENSE_MANIFESTO](LICENSE_MANIFESTO).
+
 ## Credits
 Maintained by **Yulian Kuncheff**. Based on Forge Sparks by **[Rafael Mardojai CM](https://mardojai.com)** and contributors.
 

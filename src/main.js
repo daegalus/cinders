@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BlueOak-1.0.0
 
 import 'gi://Adw?version=1';
 import 'gi://Gdk?version=4.0';

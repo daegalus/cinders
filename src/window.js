@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BlueOak-1.0.0
 
 import Adw from 'gi://Adw';
 import Gio from 'gi://Gio';

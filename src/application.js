@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BlueOak-1.0.0
 
 import Adw from 'gi://Adw';
 import Gdk from 'gi://Gdk';
@@ -196,7 +196,9 @@ export default class Application extends Adw.Application {
             website: 'https://yulian.dev',
             copyright:
                 'Copyright 2026 Yulian Kuncheff\nCopyright 2022 Rafael Mardojai CM',
-            license_type: Gtk.License.MIT_X11,
+            license_type: Gtk.License.CUSTOM,
+            license:
+                'Blue Oak Model License 1.0.0\nhttps://blueoakcouncil.org/license/1.0.0',
         });
         about.present(this.window);
     }

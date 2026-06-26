@@ -7,7 +7,7 @@
   <name translate="no">Cinders</name>
   <summary>Get Git forges notifications</summary>
   <metadata_license>CC0-1.0</metadata_license>
-  <project_license>MIT</project_license>
+  <project_license>BlueOak-1.0.0</project_license>
   <url type="homepage">https://yulian.dev</url>
   <developer id="dev.yulian">
       <name translate="no">Yulian Kuncheff</name>

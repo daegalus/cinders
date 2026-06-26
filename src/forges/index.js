@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BlueOak-1.0.0
 
 import Forgejo from './forgejo.js';
 import Gitea from './gitea.js';

@@ -1,4 +1,4 @@
-// SPDX-License-Identifier: MIT
+// SPDX-License-Identifier: BlueOak-1.0.0
 
 function escapeRegex(value) {
     return value.replace(/[|\\{}()[\]^$+?.]/g, '\\$&');
