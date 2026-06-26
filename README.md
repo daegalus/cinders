@@ -16,7 +16,23 @@
 Simple notifier app with support for GitHub, GitLab, Gitea, Forgejo and Tangled.
 
 ## Install
-Cinders is a fork of Forge Sparks and currently builds from source.
+
+### Flatpak Repository
+
+The preferred install path is the Cinders Flatpak repository:
+
+```sh
+flatpak install --user https://daegalus.github.io/cinders/flatpak/dev.yulian.Cinders.flatpakref
+```
+
+Updates are handled by Flatpak:
+
+```sh
+flatpak update dev.yulian.Cinders
+```
+
+The hosted repository is generated from the release Flatpak manifest. See
+`build-aux/flatpak-repo/README.md` for publishing and local repository testing.
 
 ### Build from source
 

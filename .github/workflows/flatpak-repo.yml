@@ -1,0 +1,89 @@
+name: Flatpak Repository
+
+on:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+  pages: write
+  id-token: write
+
+concurrency:
+  group: flatpak-repo
+  cancel-in-progress: false
+
+env:
+  APP_ID: dev.yulian.Cinders
+  BRANCH: stable
+  CINDERS_FLATPAK_BASE_URL: ${{ vars.CINDERS_FLATPAK_BASE_URL }}
+
+jobs:
+  build:
+    name: Build Flatpak repo
+    runs-on: ubuntu-latest
+    container:
+      image: ghcr.io/flathub-infra/flatpak-github-actions:freedesktop-25.08
+      options: --privileged
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          submodules: recursive
+
+      - name: Resolve repository URL
+        shell: bash
+        run: |
+          repo_name="${GITHUB_REPOSITORY#*/}"
+          base_url="${CINDERS_FLATPAK_BASE_URL:-https://${GITHUB_REPOSITORY_OWNER}.github.io/${repo_name}/flatpak}"
+          echo "BASE_URL=${base_url}" >> "$GITHUB_ENV"
+
+      - name: Import Flatpak signing key
+        shell: bash
+        env:
+          FLATPAK_GPG_PRIVATE_KEY: ${{ secrets.FLATPAK_GPG_PRIVATE_KEY }}
+          FLATPAK_GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+        run: |
+          if [ -z "$FLATPAK_GPG_PRIVATE_KEY" ] || [ -z "$FLATPAK_GPG_KEY_ID" ]; then
+            echo "::error::Set FLATPAK_GPG_PRIVATE_KEY and FLATPAK_GPG_KEY_ID before publishing the Flatpak repo."
+            exit 1
+          fi
+
+          install -m 700 -d ~/.gnupg
+          printf '%s' "$FLATPAK_GPG_PRIVATE_KEY" | gpg --batch --import
+          mkdir -p _build
+          gpg --batch --export "$FLATPAK_GPG_KEY_ID" > _build/cinders-flatpak-public.gpg
+
+      - name: Build signed Flatpak repository
+        shell: bash
+        env:
+          GPG_KEY_ID: ${{ secrets.FLATPAK_GPG_KEY_ID }}
+          GPG_KEY_FILE: _build/cinders-flatpak-public.gpg
+        run: |
+          bash build-aux/flatpak-repo/build-repo.sh
+
+      - name: Stage Pages artifact
+        shell: bash
+        run: |
+          mkdir -p public/flatpak
+          cp -a _build/flatpak/. public/flatpak/
+          find public/flatpak -name .lock -delete
+          touch public/.nojekyll
+
+      - name: Upload Pages artifact
+        uses: actions/upload-pages-artifact@v5
+        with:
+          path: public
+          include-hidden-files: true
+
+  deploy:
+    name: Deploy Flatpak repo
+    needs: build
+    runs-on: ubuntu-latest
+    environment:
+      name: github-pages
+      url: ${{ steps.deployment.outputs.page_url }}
+    steps:
+      - name: Deploy to GitHub Pages
+        id: deployment
+        uses: actions/deploy-pages@v5

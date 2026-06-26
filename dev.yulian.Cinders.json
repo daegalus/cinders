@@ -20,10 +20,9 @@
             "cleanup": ["*"],
             "sources": [
                 {
-                    "type": "git",
-                    "url": "https://gitlab.gnome.org/GNOME/blueprint-compiler",
-                    "tag": "0.18.0",
-                    "commit": "07c9c9df9cd1b6b4454ecba21ee58211e9144a4b"
+                    "type": "archive",
+                    "url": "https://download.gnome.org/sources/blueprint-compiler/0.18/blueprint-compiler-0.18.0.tar.xz",
+                    "sha256": "4142b9017151a347ccdc2907ac033b18508363476b44a76d0420b4af420bd866"
                 }
             ]
         },
